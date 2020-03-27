@@ -1636,7 +1636,7 @@ var injectContentScript = function(defaultServerOptions=optionsConfig, servers=s
             <ul id="chat-menu-container">
               <li id="function-title">
                 <div id="title">
-                  <h1>Netflix Party</h1>
+                  <h1>Netflix Party+</h1>
                 </div>
               </li>
               <li id="function-user">

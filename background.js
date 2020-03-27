@@ -4,17 +4,6 @@
 // Google Analytics                                                     //
 //////////////////////////////////////////////////////////////////////////
 
-// inject Google Analytics
-var _gaq = _gaq || [];
-_gaq.push(['_setAccount', 'UA-71812070-2']);
-_gaq.push(['_trackPageview']);
-
-(function() {
-  var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
-  ga.src = 'https://ssl.google-analytics.com/ga.js';
-  var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
-})();
-
 // log events
 function logEvent(eventType) {
   var numTries = 0;
@@ -59,6 +48,7 @@ function logEvent(eventType) {
   }, 5000);
 }
 
+/* TODO: custom install page
 chrome.runtime.onInstalled.addListener(function(details){
     if(details.reason == "install"){
         console.log("This is a first install!");
@@ -75,6 +65,7 @@ chrome.runtime.onInstalled.addListener(function(details){
         logEvent('update-' + thisVersion); // 16 chars max
     }
 });
+*/
 
 chrome.storage.onChanged.addListener(function(changes, areaName) {
   console.log("storage change: " + JSON.stringify(changes) + " for " + JSON.stringify(areaName));
@@ -84,11 +75,13 @@ chrome.storage.onChanged.addListener(function(changes, areaName) {
 //////////////////////////////////////////////////////////////////////////
 // Autoupdate                                                           //
 //////////////////////////////////////////////////////////////////////////
+/* TODO: autoupdate
 chrome.runtime.onUpdateAvailable.addListener(function(details) {
   // console.log("updating to version " + details.version);
   _gaq.push(['_trackEvent', 'auto-update ->' + details.version, 'clicked']);
   chrome.runtime.reload();
 });
+*/
 
 // chrome.runtime.requestUpdateCheck(function(status) {
 //   if (status == "update_available") {
@@ -120,7 +113,8 @@ try {
           chrome.storage.local.set({'userId': userId, 'recentlyUpdated': true}, function() {
             console.log('Settings saved');
           });
-          chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + userId);
+          // TODO: uninstall URL
+          //chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + userId);
         }
       }
     }
@@ -138,7 +132,8 @@ try {
           chrome.storage.local.set({'userId': userId, 'oldUserId': oldUserId, 'recentlyUpdated': true}, function() {
             console.log('Settings saved');
           });
-          chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + userId);
+          // TODO: uninstall url
+          //chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + userId);
         }
       }
     }
@@ -157,7 +152,8 @@ try {
         resetUserId(data.userId);
       } else {
         console.log("chrome storage local has user id: " + data.userId);
-        chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + data.userId);
+        // TODO: uninstall url
+        // chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + data.userId);
       }
     }
   });
