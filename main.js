@@ -74,6 +74,7 @@ function netflixParty() {
       jQuery('.sizing-wrapper').css('right', 280 + 'px');
       jQuery('#chat-wrapper').show();
       setOwnIcon(userIcon);
+      setOwnName(userName);
       if (!document.hasFocus()) {
         clearUnreadCount();
       }
@@ -135,6 +136,10 @@ function netflixParty() {
     jQuery(".user-icon").children("img").attr("src", iconURL);
   }
 
+  function setOwnName(name) {
+    jQuery(".nickname-input input").val(name);
+  }
+
   chrome.storage.local.get(null, function(data) {
     userId = data.userId;
     userToken = data.userToken;
@@ -142,41 +147,48 @@ function netflixParty() {
     console.debug("Recieved cached user data");
   });
 
+  function afterInject() {
+    console.debug("Injected chat HTML");
+    for(var i =0; i < icons.length; i++) createIconButton(i);
+    setChatVisible(false);
+
+    /*****************
+     * jQuery Events *
+     *****************/
+
+    jQuery(".user-icon").click(e => {
+      jQuery("#chat-icon-container").show();
+      jQuery(".chat-settings-container").hide();
+    });
+
+    jQuery("#user-icon").children("img").click(e => {
+      toggleIconContainer();
+    });
+
+    jQuery(".btns button").click(e => {
+      var nicknameText = jQuery(".nickname-input input").val().replace(/^\s+|\s+$/g, "");
+      if(nicknameText != "" && nicknameText != userName) {
+        socket.emit("changeUsername", {
+          name: nicknameText
+        });
+      }
+      toggleIconContainer();
+    });
+  }
+
   function injectHtml() {
     if (jQuery('#chat-wrapper').length === 0) {
       jQuery.ajax({
         url: chrome.runtime.getURL("inc/sidebar.html"),
         success: result => {
           jQuery('.sizing-wrapper').after(result);
-          for(var i =0; i < icons.length; i++) createIconButton(i);
-          setChatVisible(false);
-          console.debug("Injected chat HTML");
+          afterInject();
         }
       });
     }
   }
 
-  /*****************
-   * jQuery Events *
-   *****************/
-  jQuery(".user-icon").click(e => {
-    jQuery("#chat-icon-container").show();
-    jQuery(".chat-settings-container").hide();
-  });
-
-  jQuery("#user-icon").click(e => {
-    toggleIconContainer();
-  });
-
-  jQuery(".btns button").click(e => {
-    var nicknameText = jQuery(".nickname-input input").val().replace(/^\s+|\s+$/g, "");
-    if(nicknameText != "" && nicknameText != users[userId].name) {
-      socket.emit("changeUsername", {
-        name: nicknameText
-      });
-    }
-    toggleIconContainer();
-  });
+  
 
   /***************************
    * Chrome Message Handling *
@@ -236,6 +248,9 @@ function netflixParty() {
       console.debug("Connected as " + data.userName + " with icon " + data.userIcon + "!");
       userName = data.userName;
       userIcon = data.userIcon;
+
+      setOwnIcon(userIcon);
+      setOwnName(userName);
     });
   }
 
