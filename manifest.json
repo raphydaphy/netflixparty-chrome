@@ -1,26 +1,25 @@
 {
   "manifest_version": 2,
 
-  "name": "__MSG_extName__",
-  "description": "__MSG_extDescription__",
+  "name": "Netflix Party+",
+  "description": "Watch Netflix with your friends while in self-isolation - now with more funcionality!",
   "version": "2.0",
-  "default_locale": "en",
   "permissions": [
       "activeTab",
       "declarativeContent",
       "storage",
-      "https://*.netflix.com/*",
-      "https://netflixparty.raphydaphy.com/*",
       "webNavigation",
       "identity",
-      "identity.email"
+      "identity.email",
+      "https://*.netflix.com/*",
+      "https://netflixparty.raphydaphy.com/*"
   ],
   "page_action": {
     "default_icon": {
       "19": "icon.png",
       "38": "icon.png"
     },
-    "default_title": "__MSG_extName__",
+    "default_title": "Netflix Party+",
     "default_popup": "popup.html"
   },
   "background": {

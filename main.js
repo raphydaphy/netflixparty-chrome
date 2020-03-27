@@ -70,6 +70,7 @@ function netflixParty() {
       jQuery('.sizing-wrapper').addClass('with-chat');
       jQuery('.sizing-wrapper').css('right', 280 + 'px');
       jQuery('#chat-wrapper').show();
+      setOwnIcon(userIcon);
       if (!document.hasFocus()) {
         clearUnreadCount();
       }
@@ -80,31 +81,20 @@ function netflixParty() {
     }
   };
 
+  function setOwnIcon(iconName) {
+    var iconURL = chrome.runtime.getURL("inc/img/" + iconName + ".svg");
+    jQuery("#user-icon").children("img").attr("src", iconURL);
+    jQuery(".user-icon").children("img").attr("src", iconURL);
+  }
+
   chrome.storage.local.get(null, function(data) {
     userId = data.userId;
     userToken = data.userToken;
     userName = data.userName;
     userIcon = data.userIcon;
 
-    console.log("Recieved chrome settings! userId: " + userId + ", userToken: " + userToken);
+    console.debug("Recieved cached user data");
   });
-
-  var allowFullscreen = function() {
-    // allow keyboard input on fullscreen
-    var script = document.createElement("script");
-      var fsCode = `
-        document.getElementsByClassName("sizing-wrapper")[0].requestFullscreen = function() {console.log('test');}
-        console.log("fullscreen loaded? :" + document.getElementsByClassName('button-nfplayerFullscreen').length);
-
-        document.getElementsByClassName('button-nfplayerFullscreen')[0].onclick = function() {
-          console.log('fullscreen click');
-          var fullScreenWrapper = document.getElementsByClassName("nf-kb-nav-wrapper")[0];
-              fullScreenWrapper.webkitRequestFullScreen(fullScreenWrapper.ALLOW_KEYBOARD_INPUT);
-        }
-      `;
-      script.text = fsCode;
-    document.head.appendChild(script);
-  }
 
   function injectHtml() {
     if (jQuery('#chat-wrapper').length === 0) {
@@ -112,6 +102,7 @@ function netflixParty() {
         url: chrome.runtime.getURL("inc/sidebar.html"),
         success: result => {
           jQuery('.sizing-wrapper').after(result);
+          setChatVisible(false);
           console.debug("Injected chat HTML");
         }
       });
@@ -121,7 +112,6 @@ function netflixParty() {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.type) {
       case "getInitData":
-        console.log("get init data");
         sendResponse({
           sessionId: undefined,
           videoDomId: undefined,
@@ -137,26 +127,20 @@ function netflixParty() {
         return true;
       case "joinSession":
         // sessionId, videoId
-        console.log("join session");
         sendResponse({});
         showChat();
         return true;
       case "leaveSession":
-        console.log("leave session");
         sendResponse({});
         return true;
       case "showChat":
-        console.log("show chat");
         setChatVisible(request.data.visible);
         injectHtml();
         sendResponse({});
         return true;
       case "urlChanged":
-      sendResponse({});
+        sendResponse({});
         injectHtml();
-        if (request.data.url.includes("watch")) {
-          allowFullscreen();
-        }
         return true;
       default:
         console.log("Recieved invalid message: " + request.type);

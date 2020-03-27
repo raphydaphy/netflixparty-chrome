@@ -82,10 +82,10 @@ function createUser(name) {
 
       if (response.id) {
         chrome.storage.local.set({
-          "userId": response.id,
-          "userToken": response.token,
-          "userName": response.name,
-          "userIcon": response.userIcon,
+          userId: response.id,
+          userToken: response.token,
+          userName: response.name,
+          userIcon: response.icon,
           recentlyUpdated: true
         }, function() {
           console.log('Successfully created and cached user account!');

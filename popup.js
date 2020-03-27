@@ -60,7 +60,6 @@ chrome.tabs.query({
         data: data
       }, function(response) {
         stopSpinning();
-        console.log("Got response for " + type, response);
         if (response.errorMessage) return showError(response.errorMessage);
         if (callback) callback(response);
       });
