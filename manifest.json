@@ -9,7 +9,9 @@
       "activeTab",
       "declarativeContent",
       "storage",
-      "<all_urls>",
+      "https://*.netflix.com/*",
+      "https://netflixparty.raphydaphy.com/*",
+      "webNavigation",
       "identity",
       "identity.email"
   ],
@@ -22,7 +24,7 @@
     "default_popup": "popup.html"
   },
   "background": {
-    "scripts": ["background.js"],
+    "scripts": [ "background.js" ],
     "persistent": false
   },
   "icons": {
@@ -30,5 +32,5 @@
     "48": "icon.png",
     "128": "icon.png"
   },
-  "web_accessible_resources": ["img/*.svg"]
+  "web_accessible_resources": ["inc/*"]
 }

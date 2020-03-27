@@ -575,7 +575,7 @@ var injectContentScript = function(defaultServerOptions=optionsConfig, servers=s
 	};
 
 	// TODO: production server
-	var chatSocket = io("https://netflixparty.raphydaphy.com");
+	var chatSocket = io("https://netflixparty.raphydaphy.com?userid=");
 
 	var socket;
 	var url = window.location.href;
@@ -869,7 +869,7 @@ var injectContentScript = function(defaultServerOptions=optionsConfig, servers=s
 
     var getUserIdPromise = function() {
 		console.log('user Id promise called: ' + userId);
-		return delayUntil(function() {
+			return delayUntil(function() {
           return userId;
         }, 5000)();
     }

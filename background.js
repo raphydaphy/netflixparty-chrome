@@ -43,8 +43,31 @@ function logEvent(eventType) {
   }, 5000);
 }
 
+/*******************
+ * Chrome Listeners
+ *******************/
+
 chrome.storage.onChanged.addListener(function(changes, areaName) {
   console.debug("storage change: " + JSON.stringify(changes) + " for " + JSON.stringify(areaName));
+});
+
+const urlRegex = RegExp("netflix\.com");
+
+chrome.tabs.onUpdated.addListener(function(tabId, info, tab) {
+  if (info.status == "complete" && urlRegex.test(tab.url)) {
+    chrome.tabs.executeScript(tabId, {
+      file: "main.js"
+    }, () => {
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          type: "urlChanged",
+          data: {
+            url: tab.url
+          }
+        }, (response) => {});
+      } catch(err) {}
+    });
+  }
 });
 
 /**********************

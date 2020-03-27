@@ -1,0 +1,824 @@
+<script src="https://kit.fontawesome.com/d2e8fae07c.js" crossorigin="anonymous"></script>
+<style>
+  #chat-wrapper {
+    width: 288px;
+    height: 100%;
+    background: #1a1a1a;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    cursor: auto;
+    user-select: text;
+    -webkit-user-select: text;
+    z-index: 9999999999;
+  }
+
+  #chat-wrapper #chat-container {
+    // width: 228px;
+    height: 100%;
+    position: relative;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+  }
+
+  @import url("https://fonts.googleapis.com/css?family=Poppins:400,500,600,700,800,900");
+  /* line 34, ../sass/base/_settings.scss */
+  body, html {
+    margin: 0em;
+    padding: 0em;
+  }
+
+  /* line 39, ../sass/base/_settings.scss */
+  h1, h2, h3, h4, h5, h6, p, ul, ol, li, a, section, div {
+    margin: 0em;
+    padding: 0em;
+    list-style: none;
+    outline: none;
+    text-decoration: none;
+  }
+
+  /* line 47, ../sass/base/_settings.scss */
+  button {
+    border: none;
+    outline: none;
+  }
+  /* line 50, ../sass/base/_settings.scss */
+  button:hover {
+    cursor: pointer;
+  }
+
+  /*** Works on common browsers ***/
+  /* line 56, ../sass/base/_settings.scss */
+  ::selection {
+    background: #ef3e3a;
+    color: #f2f2f2;
+  }
+
+  /*** Mozilla based browsers ***/
+  /* line 62, ../sass/base/_settings.scss */
+  ::-moz-selection {
+    background: #ef3e3a;
+    color: #f2f2f2;
+  }
+
+  /***For Other Browsers ***/
+  /* line 68, ../sass/base/_settings.scss */
+  ::-o-selection {
+    background: #ef3e3a;
+    color: #f2f2f2;
+  }
+
+  /* line 73, ../sass/base/_settings.scss */
+  ::-ms-selection {
+    background: #ef3e3a;
+    color: #f2f2f2;
+  }
+
+  /*** For Webkit ***/
+  /* line 79, ../sass/base/_settings.scss */
+  ::-webkit-selection {
+    background: #ef3e3a;
+    color: #f2f2f2;
+  }
+
+  /* line 3, ../sass/layout/_chatlayout.scss */
+  .NP-red {
+    color: #ef3e3a;
+  }
+
+  /*******************************
+   * Unselectable class for icons 
+   *******************************/
+  .unselectable::selection {
+    color: transparent;
+    background: transparent;
+  }
+  .unselectable::-moz-selection {
+    color: transparent;
+    background: transparent;
+  }
+  .unselectable::-o-selection {
+    color: transparent;
+    background: transparent;
+  }
+  .unselectable::-ms-selection {
+    color: transparent;
+    background: transparent;
+  }
+  .unselectable::-webkit-selection {
+    color: transparent;
+    background: transparent;
+  }
+  /*******************
+   * End Unselectable
+   *******************/
+
+  /* line 7, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper {
+    width: 288px;
+    height: 100%;
+    display: flex;
+    flex-flow: column;
+    box-shadow: rgba(0, 0, 0, 0.6) -5px 0px 10px;
+    background: #191919;
+    position: fixed;
+    right: 0;
+  }
+  /* line 14, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container {
+    width: 251px;
+    height: 100%;
+    padding: 14px 18.5px;
+  }
+  /* line 17, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container {
+    width: 100%;
+    height: 45px;
+    display: flex;
+    flex-flow: wrap row;
+  }
+  /* line 20, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container {
+    display: flex;
+    flex-flow: wrap row;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+  }
+  /* line 24, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-title {
+    width: 50%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+  /* line 28, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-title #title h1 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 15.5px;
+    font-weight: 600;
+    color: #ef3e3a;
+  }
+  /* line 33, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user {
+    width: 50%;
+    height: 100%;
+    display: flex;
+    flex-flow: wrap row;
+    align-items: center;
+  }
+  /* line 37, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user #link-icon {
+    width: 50%;
+    display: flex;
+    flex-flow: wrap row;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  /* line 41, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user #link-icon i {
+    transform: scale(1);
+    transition: 0.3s ease;
+    width: 18px;
+    color: #f2f2f2;
+    font-size: 16px;
+  }
+  /* line 45, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user #link-icon i:hover {
+    transform: scale(1.15);
+    cursor: pointer;
+  }
+  /* line 51, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user #user-icon {
+    width: 50%;
+    height: 100%;
+    display: flex;
+    flex-flow: wrap row;
+    justify-content: flex-end;
+  }
+  /* line 55, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user #user-icon img {
+    filter: drop-shadow(0px 0px 10px #000000);
+    -webkit-filter: drop-shadow(0px 0px 10px #000000);
+    -moz-filter: drop-shadow(0px 0px 10px #000000);
+    width: 38px;
+    transform: scale(1);
+    transform-origin: center;
+    transition: 0.5s ease;
+  }
+  /* line 61, ../sass/layout/_chatlayout.scss */
+  #chat-wrapper #chat-container #chat-header-container #chat-menu-container #function-user #user-icon img:hover {
+    filter: drop-shadow(0px 8px 10px rgba(0, 0, 0, 0.6));
+    -webkit-filter: drop-shadow(0px 8px 10px rgba(0, 0, 0, 0.6));
+    -moz-filter: drop-shadow(0px 8px 10px rgba(0, 0, 0, 0.6));
+    transform: scale(1.1);
+  }
+
+  /* line 3, ../sass/modules/_msg.scss */
+  #chat-history-container {
+    width: 100%;
+    height: calc(100% - 195px);
+    padding-bottom: 20px;
+    margin-top: 15px;
+    position: relative;
+    overflow: hidden;
+  }
+  /* line 10, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-header {
+    width: 100%;
+    height: 25px;
+    display: flex;
+    flex-flow: wrap row;
+    background: #191919;
+    z-index: 1;
+    align-items: flex-start;
+    position: relative;
+  }
+  /* line 17, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-header h4 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: #e2e2e2;
+  }
+  /* line 30, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-flow: column;
+    position: relative;
+    justify-content: flex-start;
+    overflow: auto;
+    max-height: 100%;
+  }
+  /* line 37, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg {
+    display: flex;
+    flex-flow: wrap row;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    padding-bottom: 11px;
+  }
+  /* line 44, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg .icon {
+    width: 13%;
+    height: 100%;
+    display: flex;
+    flex-flow: wrap row;
+    align-items: center;
+  }
+  /* line 48, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg .icon img {
+    width: 100%;
+    height: 100%;
+  }
+  /* line 52, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg .message-system {
+    width: 80%;
+  }
+  /* line 54, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg .message-system p {
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'Poppins', sans-serif;
+    font-style: italic;
+    color: #757575;
+  }
+  /* line 62, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg .message-txt {
+    width: 80%;
+  }
+  /* line 64, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg .message-txt p {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #e2e2e2;
+  }
+  /* line 70, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container {
+    display: flex;
+    flex-flow: wrap row;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 6px 0;
+    width: 100%;
+  }
+
+  /* Edit: Message container mouseover colors */
+  #chat-history-container #chat-history .msg-container:hover {
+    background-color: #262626;
+  }
+
+  /* line 76, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .icon-name {
+    width: 13%;
+    padding-left: 5px;
+  }
+  /* line 78, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .icon-name .icon {
+    width: 100%;
+    height: 100%;
+  }
+  /* line 80, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .icon-name .icon img {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Edit: heart icon */
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes {
+    display: flex;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .icon-heart {
+    width: 7%;
+    padding: 1%;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .icon-heart .icon {
+    width: 100%;
+    height: 100%;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .icon-heart .icon img {
+    width: 100%;
+    height: 100%;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .icon-heart .icon i {
+    transition: 0.3s ease;
+    width: 100%;
+    height: 100%;
+    color: #f2f2f2;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .heart-full .icon i {
+    color: #d43535;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .icon-heart .icon i:hover {
+    cursor: pointer;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .heart-empty .icon i:hover {
+    color: #d9adad;
+  }
+  #chat-history-container #chat-history .msg-container .msg-txt .msg-likes .heart-empty .icon i:active {
+    color: #d17979;
+  }
+
+  /* line 85, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .msg-txt {
+    display: flex;
+    flex-flow: column;
+    width: 80%;
+  }
+  /* line 88, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .msg-txt h3 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #c3c3c3;
+    padding-bottom: 0.15rem;
+  }
+  /* line 93, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .msg-txt p {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #e2e2e2;
+  }
+  /* line 98, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history .msg-container .message-system p {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    font-style: italic;
+    color: #757575;
+  }
+  /* line 104, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history > :first-child {
+    margin-top: auto !important;
+  }
+  /* line 107, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history::-webkit-scrollbar {
+    width: 2px;
+  }
+  /* line 110, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history::-webkit-scrollbar-thumb {
+    border-radius: 25px;
+    background: #ef3e3a;
+  }
+  /* line 114, ../sass/modules/_msg.scss */
+  #chat-history-container #chat-history::-webkit-scrollbar-track {
+    border-radius: 25px;
+    background: #e0e0e0;
+  }
+
+  /* line 121, ../sass/modules/_msg.scss */
+  #chat-input-container {
+    width: 100%;
+  }
+  /* line 123, ../sass/modules/_msg.scss */
+  #chat-input-container #chat-input {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    width: 100%;
+    padding-top: 10px;
+    background: none;
+    border: none;
+    outline: none;
+    color: #e2e2e2;
+    border-bottom: 1.2px solid;
+    border-bottom-color: #aaaaaa;
+    transition: 0.2s ease;
+  }
+  /* line 134, ../sass/modules/_msg.scss */
+  #chat-input-container #chat-input[type=text]:focus {
+    transition: 0.2s ease;
+    border-bottom: 1.5px solid;
+    border-bottom-color: #e2e2e2;
+  }
+
+  /* line 142, ../sass/modules/_msg.scss */
+  #presence-indicator {
+    font-family: 'Poppins', sans-serif;
+    font-size: 11.5px;
+    font-weight: 500;
+    font-style: italic;
+    color: #757575;
+    white-space: pre-wrap;
+  }
+  /* line 147, ../sass/modules/_msg.scss */
+  #presence-indicator p {
+    font-family: 'Poppins', sans-serif;
+    font-size: 11.5px;
+    font-weight: 500;
+    font-style: italic;
+    color: #757575;
+  }
+
+  /********************
+   * Patreon Container
+   *******************/
+  /* line 154, ../sass/modules/_msg.scss */
+  #patreon-container {
+    width: 100%;
+    padding-top: 16px;
+  }
+  /* line 157, ../sass/modules/_msg.scss */
+  #patreon-container #patreon-link {
+    display: flex;
+    flex-flow: wrap row;
+    align-items: center;
+  }
+  /* line 160, ../sass/modules/_msg.scss */
+  #patreon-container #patreon-link:hover {
+    cursor: pointer;
+  }
+  /* line 163, ../sass/modules/_msg.scss */
+  #patreon-container #patreon-link p {
+    font-family: 'Poppins', sans-serif;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: #949494;
+    width: 40%;
+  }
+  /* line 168, ../sass/modules/_msg.scss */
+  #patreon-container #patreon-link img {
+    border-radius: 20px;
+    width: 60%;
+  }
+
+  /************************
+   * End Patreon Container
+   ************************/
+
+  /* line 3, ../sass/modules/_setting.scss */
+  #setting-edit {
+    display: flex;
+    flex-flow: column;
+    position: relative;
+    width: 100%;
+  }
+  /* line 7, ../sass/modules/_setting.scss */
+  #setting-edit .section-b {
+    width: 100%;
+    height: 85px;
+    display: flex;
+    flex-flow: wrap row;
+    justify-content: center;
+    margin: 15px 0px;
+  }
+  /* line 12, ../sass/modules/_setting.scss */
+  #setting-edit .section-b .section-b-inner {
+    height: 100%;
+    text-align: center;
+  }
+  /* line 15, ../sass/modules/_setting.scss */
+  #setting-edit .section-b .section-b-inner .user-icon {
+    width: 100%;
+    height: 100%;
+    display: flex;
+  }
+  /* line 18, ../sass/modules/_setting.scss */
+  #setting-edit .section-b .section-b-inner .user-icon img {
+    width: 100%;
+    height: 100%;
+    transform: scale(0.95);
+    transition: 0.5s ease;
+  }
+  /* line 22, ../sass/modules/_setting.scss */
+  #setting-edit .section-b .section-b-inner .user-icon img:hover {
+    cursor: pointer;
+    transform: scale(1);
+  }
+  /* line 30, ../sass/modules/_setting.scss */
+  #setting-edit .section-c {
+    display: flex;
+    flex-flow: column;
+  }
+  /* line 32, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner {
+    display: flex;
+    flex-flow: column;
+  }
+  /* line 34, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section {
+    display: flex;
+    flex-flow: column;
+  }
+  /* line 36, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-wrap {
+    display: flex;
+    flex-flow: wrap row;
+  }
+  /* line 38, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-wrap h2 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #c3c3c3;
+    width: 50%;
+  }
+  /* line 43, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-wrap .np-btn {
+    display: flex;
+    flex-flow: wrap row;
+    align-items: center;
+    width: 50%;
+  }
+  /* line 47, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-wrap .np-btn a {
+    display: flex;
+    flex-flow: wrap row;
+    width: 100%;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  /* line 52, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-wrap .np-btn a:hover {
+    cursor: default;
+  }
+  /* line 55, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-wrap .np-btn a i {
+    width: 13.5%;
+    opacity: 0.5;
+    color: #f2f2f2;
+  }
+  /* line 62, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-input {
+    margin-top: 1px;
+    width: 100%;
+  }
+  /* line 65, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-input #nickname-edit {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    width: 100%;
+    color: #e2e2e2;
+    background: none;
+    border: none;
+    outline: none;
+    border-bottom: 1.2px solid;
+    border-bottom-color: #e2e2e2;
+  }
+  /* line 74, ../sass/modules/_setting.scss */
+  #setting-edit .section-c .section-c-inner .nickname-section .nickname-input #nickname-edit[type=text]:focus {
+    transition: 0.2s ease;
+    border-bottom: 1.2px solid;
+    border-bottom-color: #2cda00;
+  }
+
+  /* line 86, ../sass/modules/_setting.scss */
+  #settings-save {
+    position: relative;
+    width: 100%;
+  }
+  /* line 89, ../sass/modules/_setting.scss */
+  #settings-save .section-d {
+    width: 100%;
+    margin-top: 1rem;
+  }
+  /* line 92, ../sass/modules/_setting.scss */
+  #settings-save .section-d .section-d-inner {
+    width: 100%;
+    height: 35px;
+  }
+  /* line 94, ../sass/modules/_setting.scss */
+  #settings-save .section-d .section-d-inner .btns {
+    width: 100%;
+    height: 100%;
+  }
+  /* line 96, ../sass/modules/_setting.scss */
+  #settings-save .section-d .section-d-inner .btns button {
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    width: 100%;
+    height: 100%;
+    border-radius: 50px;
+    background: #5c5c5c;
+    color: #e2e2e2;
+    transition: 0.5s ease;
+  }
+  /* line 103, ../sass/modules/_setting.scss */
+  #settings-save .section-d .section-d-inner .btns button:hover {
+    background: #ef3e3a;
+  }
+
+  /* line 3, ../sass/modules/_icon.scss */
+  #chat-icon-container {
+    display: flex;
+    flex-flow: column;
+  }
+  /* line 5, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-title-container {
+    margin: 10px 0px;
+  }
+  /* line 7, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-title-container #icon-title h2 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e2e2;
+  }
+  /* line 12, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-holder-container {
+    display: flex;
+    flex-flow: wrap row;
+  }
+  /* line 14, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-holder-container #icon-holder-template {
+    display: flex;
+    flex-flow: wrap row;
+  }
+  /* line 16, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-holder-container #icon-holder-template #icon-holder {
+    display: flex;
+    flex-flow: wrap row;
+    width: 100%;
+    height: 100%;
+  }
+  /* line 19, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-holder-container #icon-holder-template #icon-holder .image-button {
+    width: 22%;
+    padding: 1px 3.75px;
+  }
+  /* line 22, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-holder-container #icon-holder-template #icon-holder .image-button .img-class {
+    width: 100%;
+    height: 100%;
+    transform: scale(0.95);
+    transition: 0.3s ease;
+  }
+  /* line 26, ../sass/modules/_icon.scss */
+  #chat-icon-container #icon-holder-container #icon-holder-template #icon-holder .image-button .img-class:hover {
+    filter: drop-shadow(0px 8px 10px rgba(0, 0, 0, 0.6));
+    -webkit-filter: drop-shadow(0px 8px 10px rgba(0, 0, 0, 0.6));
+    -moz-filter: drop-shadow(0px 8px 10px rgba(0, 0, 0, 0.6));
+    transform: scale(1);
+    cursor: pointer;
+  }
+</style>
+<div id="notification-link" class="notification-links"></div>
+
+<div id="chat-wrapper" hidden>
+  <div id="chat-container">
+
+    <div id="chat-header-container">
+
+      <ul id="chat-menu-container">
+        <li id="function-title">
+          <div id="title">
+            <h1>Netflix Chat</h1>
+          </div>
+        </li>
+        <li id="function-user">
+          <div id="link-icon">
+            <i class="unselectable fas fa-link"></i>
+            <input id="share-url" type="text" readonly="true" autocomplete="off" autofocus style="display:none;" />
+          </div>
+          <a id="user-icon">
+            <!-- getUserIconURL(userSettings.userId, userSettings.userIcon) -->
+            <img class="unselectable" src='img/IceCream.svg'>
+          </a>
+        </li>
+      </ul>
+
+      <div id="chat-link-container" style='display:none;'>
+        <div id="chat-link">
+          <div id="chat-link-url">
+            <p>The url link goes here.</p>
+          </div>
+          <div id="chat-link-icon">
+            <i class="unselectable fas fa-link"></i>
+          </div>
+        </div>
+      </div>
+
+      <div id="chat-icon-container" style="display:none">
+        <div id="icon-title-container">
+          <div id="icon-title">
+            <h2>Click to switch icon</h2>
+          </div>
+        </div>
+        <div id="icon-holder-container">
+          <div id="icon-holder-template">
+            <ul id="icon-holder">
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="setting-edit" class="chat-settings-container" style="display:none">
+
+      <div class="section-b">
+        <div class="section-b-inner section-inner">
+          <a class="user-icon">
+            <img class="unselectable" src='img/IceCream.svg' />
+          </a>
+        </div>
+      </div>
+
+      <div class="section-c">
+        <div class="section-c-inner section-inner">
+          <div class="nickname-section row-wrap">
+            <div class="nickname-wrap row-one">
+              <h2>Nickname</h2>
+              <div class="np-btn">
+                <a>
+                  <i class="unselectable fas fa-pen"></i> 
+                </a>
+              </div>
+            </div>
+            <div class="nickname-input row-two">
+              <input id="nickname-edit" type="text" placeholder='Add a nickname!'/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="settings-save" class="chat-settings-container" style="display:none">
+      <div class="section-d">
+        <div class="section-d-inner section-inner">
+
+          <div class="btns">
+            <button>Save Changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="chat-history-container">
+      <div id="chat-header">
+        <h4>Chatroom</h4>
+      </div>
+      <!-- <div id="chat-gradient"></div> -->
+      <div id="chat-history">
+
+      </div>
+    </div>
+
+    <div id="presence-indicator"><br/></div>
+
+    <div id="chat-input-container">
+      <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off"></input>
+    </div>
+
+    <div id="patreon-container">
+      <a id="patreon-link" href="https://www.patreon.com/netflixparty" target="_blank">
+        <p>
+          Support NP
+        </p>
+        <img class="unselectable" src='https://c5.patreon.com/external/logo/become_a_patron_button@2x.png' />
+      </a>
+    </div>
+
+  </div>
+</div>
