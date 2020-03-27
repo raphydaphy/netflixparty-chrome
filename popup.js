@@ -218,7 +218,6 @@ $(function() {
               videoId: videoId
             }, function(response) {
               showConnected(sessionIdFromUrl);
-              _gaq.push(['_trackEvent', 'join-session', 'clicked']);
               logEvent('join-session', sessionIdFromUrl);
             });
           }
@@ -235,7 +234,6 @@ $(function() {
             videoId: videoId
           }, function(response) {
             showConnected(response.sessionId, response.defaultServer);
-            _gaq.push(['_trackEvent', 'create-session', 'clicked']);
             logEvent('create-session', response.sessionId);
           });
         });

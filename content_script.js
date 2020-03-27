@@ -574,6 +574,9 @@ var injectContentScript = function(defaultServerOptions=optionsConfig, servers=s
 		return decodeURIComponent(match[1]);
 	};
 
+	// TODO: production server
+	var chatSocket = io("https://netflixparty.raphydaphy.com");
+
 	var socket;
 	var url = window.location.href;
 	var herokuSocket = false;

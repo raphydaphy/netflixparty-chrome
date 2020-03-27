@@ -9,7 +9,9 @@
       "activeTab",
       "declarativeContent",
       "storage",
-      "<all_urls>"
+      "<all_urls>",
+      "identity",
+      "identity.email"
   ],
   "page_action": {
     "default_icon": {

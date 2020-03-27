@@ -1,9 +1,5 @@
 'use strict';
 
-//////////////////////////////////////////////////////////////////////////
-// Google Analytics                                                     //
-//////////////////////////////////////////////////////////////////////////
-
 // log events
 function logEvent(eventType) {
   var numTries = 0;
@@ -23,7 +19,6 @@ function logEvent(eventType) {
         }
       });
 
-
       // only send events if recent update
       if(permId && recentlyUpdated) {
         var data = {
@@ -31,10 +26,10 @@ function logEvent(eventType) {
           eventType: eventType,
         }
 
-        console.log("event: " + JSON.stringify(data));
+        console.debug("event: " + JSON.stringify(data));
 
         var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-        xmlhttp.open("POST", "https://data2.netflixparty.com/log-event");
+        xmlhttp.open("POST", "https://netflixparty.raphydaphy.com/log-event");
         xmlhttp.setRequestHeader("Content-Type", "application/json");
         xmlhttp.send(JSON.stringify(data));
         
@@ -48,125 +43,91 @@ function logEvent(eventType) {
   }, 5000);
 }
 
-/* TODO: custom install page
-chrome.runtime.onInstalled.addListener(function(details){
-    if(details.reason == "install"){
-        console.log("This is a first install!");
-        var thisVersion = chrome.runtime.getManifest().version;
-        _gaq.push(['_trackEvent', 'install: ' + thisVersion, 'clicked']);
-        logEvent('install');
-        chrome.tabs.create({'url': "https://www.netflixparty.com/tutorial"}, function() {
-          console.log('created new tab after install');
-        });
-    } else if(details.reason == "update"){
-        var thisVersion = chrome.runtime.getManifest().version;
-        console.log("Updated from " + details.previousVersion + " to " + thisVersion + "!");
-        _gaq.push(['_trackEvent', 'update: ' + details.previousVersion + ' -> ' + thisVersion, 'clicked']);
-        logEvent('update-' + thisVersion); // 16 chars max
-    }
-});
-*/
-
 chrome.storage.onChanged.addListener(function(changes, areaName) {
-  console.log("storage change: " + JSON.stringify(changes) + " for " + JSON.stringify(areaName));
+  console.debug("storage change: " + JSON.stringify(changes) + " for " + JSON.stringify(areaName));
 });
 
+/**********************
+ * User Authentication
+ **********************/
 
-//////////////////////////////////////////////////////////////////////////
-// Autoupdate                                                           //
-//////////////////////////////////////////////////////////////////////////
-/* TODO: autoupdate
-chrome.runtime.onUpdateAvailable.addListener(function(details) {
-  // console.log("updating to version " + details.version);
-  _gaq.push(['_trackEvent', 'auto-update ->' + details.version, 'clicked']);
-  chrome.runtime.reload();
-});
-*/
+function createUser(name) {
+  var xhr = new XMLHttpRequest();
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState == XMLHttpRequest.DONE) {
+      var response = JSON.parse(xhr.responseText);
 
-// chrome.runtime.requestUpdateCheck(function(status) {
-//   if (status == "update_available") {
-//     console.log("update pending...");
-//   } else if (status == "no_update") {
-//     console.log("no update found");
-//   } else if (status == "throttled") {
-//     console.log("Oops, I'm asking too frequently - I need to back off.");
-//   }
-// });
+      if (response.id) {
+        chrome.storage.local.set({
+          "userId": response.id,
+          "userToken": response.token,
+          "userName": response.name,
+          "userIcon": response.userIcon,
+          recentlyUpdated: true
+        }, function() {
+          console.log('Successfully created and cached user account!');
+        });
+      } else {
+        console.warn("Recieved invalid response when creating user", response)
+      }
+    }
+  }
+  xhr.open("POST", "https://netflixparty.raphydaphy.com/create-user", true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  xhr.send(JSON.stringify({name: name}));
+}
 
-
-//////////////////////////////////////////////////////////////////////////
-// User Authentication                                                  //
-//////////////////////////////////////////////////////////////////////////
+function validateToken(id, token, fn) {
+  var xhr = new XMLHttpRequest();
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState == XMLHttpRequest.DONE) {
+      var response = JSON.parse(xhr.responseText);
+      fn(response.result);
+    }
+  }
+  xhr.open("POST", "https://netflixparty.raphydaphy.com/validate-token", true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  xhr.send(JSON.stringify({
+    userid: id,
+    token: token
+  }));
+}
 
 try {
-  function validateId(id) {
-    return typeof id === 'string' && id.length === 16;
-  }
-
-  // Ensure that chrome extension has unique userid
-  function setUserId() {
-    var xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState == XMLHttpRequest.DONE) {
-        var userId = xhr.responseText;
-        if(validateId(userId)) {
-          chrome.storage.local.set({'userId': userId, 'recentlyUpdated': true}, function() {
-            console.log('Settings saved');
-          });
-          // TODO: uninstall URL
-          //chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + userId);
-        }
-      }
-    }
-    xhr.open('GET', 'https://data2.netflixparty.com/create-userId', true);
-    xhr.send(null);
-  }
-
-  // Ensure that chrome extension resets unique userid
-  function resetUserId(oldUserId) {
-    var xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState == XMLHttpRequest.DONE) {
-        var userId = xhr.responseText;
-        if(validateId(userId)) {
-          chrome.storage.local.set({'userId': userId, 'oldUserId': oldUserId, 'recentlyUpdated': true}, function() {
-            console.log('Settings saved');
-          });
-          // TODO: uninstall url
-          //chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + userId);
-        }
-      }
-    }
-    xhr.open('GET', 'https://data2.netflixparty.com/create-userId', true);
-    xhr.send(null);
+  function createUserFromEmail() {
+    chrome.identity.getProfileUserInfo(function(info) {
+      var name = undefined;
+      if (info.email) name = info.email.split("@")[0];
+      createUser(name);
+    });
+    
   }
 
   chrome.storage.local.get(null, function(data) {
-    // message('Settings retrieved', items);
     if(!data.userId) {
-      console.log("userId undefined in local storage -> now setting")
-      setUserId();
+      console.debug("Attempting to create user account...")
+      createUserFromEmail();
     } else {
-      if(!data.recentlyUpdated) {
-        console.log("userId undefined in local storage -> now setting")
-        resetUserId(data.userId);
-      } else {
-        console.log("chrome storage local has user id: " + data.userId);
-        // TODO: uninstall url
-        // chrome.runtime.setUninstallURL("https://www.netflixparty.com/uninstall?userId=" + data.userId);
-      }
+      validateToken(data.userId, data.userToken, result => {
+        if (result != "success") {
+          console.info("Token has expired. Attempting to create a new account...");
+          createUserFromEmail();
+        } else {
+          console.debug("Token is valid.");
+        }
+      });
     }
   });
 } catch(e) {
-  console.log("user auth error");
+  console.warn("User auth error", e);
 }
 
 chrome.runtime.onMessage.addListener(
   function(request, sender, sendResponse) {
-    console.log(sender.tab ? "from a content script:" + sender.tab.url : "from the extension");
+    console.debug(sender.tab ? "from a content script:" + sender.tab.url : "from the extension");
     if (request.summary) {
       var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-      xmlhttp.open("POST", "https://data2.netflixparty.com/log-summary", true);
+      xmlhttp.open("POST", "https://netflixparty.raphydaphy.com/log-summary", true);
       xmlhttp.setRequestHeader("Content-Type", "application/json");
       xmlhttp.send(JSON.stringify(request.summary));
 
@@ -174,18 +135,6 @@ chrome.runtime.onMessage.addListener(
     }
   }
 );
-
-//////////////////////////////////////////////////////////////////////////
-// Track tabs                                                           //
-//////////////////////////////////////////////////////////////////////////
-// function my_listener(tabId, changeInfo, tab) {
-//   // If updated tab matches this one
-//   if (changeInfo.status == "complete") {  
-//     _gaq.push(['_trackEvent', 'tab-update', 'clicked']);
-//   }
-// }
-
-// chrome.tabs.onUpdated.addListener(my_listener);
 
 //////////////////////////////////////////////////////////////////////////
 // Background Logic                                                     //
