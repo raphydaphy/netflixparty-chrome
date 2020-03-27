@@ -43,9 +43,9 @@ function logEvent(eventType) {
   }, 5000);
 }
 
-/*******************
- * Chrome Listeners
- *******************/
+/********************
+ * Chrome Listeners *
+ ********************/
 
 chrome.storage.onChanged.addListener(function(changes, areaName) {
   console.debug("storage change: " + JSON.stringify(changes) + " for " + JSON.stringify(areaName));
@@ -70,9 +70,9 @@ chrome.tabs.onUpdated.addListener(function(tabId, info, tab) {
   }
 });
 
-/**********************
- * User Authentication
- **********************/
+/***********************
+ * User Authentication *
+ ***********************/
 
 function createUser(name) {
   var xhr = new XMLHttpRequest();
@@ -84,8 +84,6 @@ function createUser(name) {
         chrome.storage.local.set({
           userId: response.id,
           userToken: response.token,
-          userName: response.name,
-          userIcon: response.icon,
           recentlyUpdated: true
         }, function() {
           console.log('Successfully created and cached user account!');
@@ -159,9 +157,9 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-//////////////////////////////////////////////////////////////////////////
-// Background Logic                                                     //
-//////////////////////////////////////////////////////////////////////////
+/********************
+ * Background Logic *
+ ********************/
 
 // only load for URLs that match www.netflix.com/watch/*
 chrome.runtime.onInstalled.addListener(function(details) {

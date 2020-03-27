@@ -70,16 +70,16 @@ chrome.tabs.query({
   var showConnected = function(sessionId) {
     var urlWithSessionId = tab.url.split("?")[0] + "?npSessionId=" + encodeURIComponent(sessionId);
 
-    $(".disconnected").addClass("hidden");
-    $(".connected").removeClass("hidden");
-    $("#show-chat").prop("checked", true);
-    $("#share-url").val(urlWithSessionId) .focus().select();
+    jQuery(".disconnected").addClass("hidden");
+    jQuery(".connected").removeClass("hidden");
+    jQuery("#show-chat").prop("checked", true);
+    jQuery("#share-url").val(urlWithSessionId) .focus().select();
   };
 
   var showDisconnected = function() {
-    $(".disconnected").removeClass("hidden");
-    $(".connected").addClass("hidden");
-    $("#control-lock").prop("checked", false);
+    jQuery(".disconnected").removeClass("hidden");
+    jQuery(".connected").addClass("hidden");
+    jQuery("#control-lock").prop("checked", false);
   };
 
   // get the session if there is one
@@ -100,12 +100,13 @@ chrome.tabs.query({
       showError(initData.errorMessage);
       return;
     }
-    if (initData.sessionId === null) {
+    if (initData.sessionId === undefined) {
       var sessionIdFromUrl = getURLParameter(tab.url, "npSessionId");
       if (sessionIdFromUrl) {
         sendMessage("joinSession", {
           sessionId: sessionIdFromUrl.replace(/^\s+|\s+$/g, "").toLowerCase(),
-          videoId: videoId
+          videoId: videoId,
+          showChat: true
         }, function(response) {
           showConnected(sessionIdFromUrl);
         });
@@ -114,50 +115,51 @@ chrome.tabs.query({
       showConnected(initData.sessionId);
     }
 
-    $("#show-chat").prop("checked", initData.chatVisible);
+    jQuery("#show-chat").prop("checked", initData.chatVisible);
 
     // listen for clicks on the "Create session" button
-    $("#create-session").click(function() {
+    jQuery("#create-session").click(function() {
       sendMessage("createSession", {
-        controlLock: $("#control-lock").is(":checked"),
-        videoId: videoId
+        controlLock: jQuery("#control-lock").is(":checked"),
+        videoId: videoId,
+        showChat: true
       }, function(response) {
         showConnected(response.sessionId);
       });
     });
 
     // listen for clicks on the "Leave session" button
-    $("#leave-session").click(function() {
+    jQuery("#leave-session").click(function() {
       sendMessage("leaveSession", {}, function(response) {
         showDisconnected();
       });
     });
 
     // listen for clicks on the "Show chat" checkbox
-    $("#show-chat").change(function() {
-      sendMessage("showChat", { visible: $("#show-chat").is(":checked") }, null);
+    jQuery("#show-chat").change(function() {
+      sendMessage("showChat", { visible: jQuery("#show-chat").is(":checked") }, null);
     });
 
     // listen for clicks on the share URL box
-    $("#share-url").click(function(e) {
-      var sessionIdFromShareUrl = getURLParameter($("#share-url").val(), "npSessionId", 1);
-      var defaultServerFromShareUrl = getURLParameter($("#share-url").val(), "npServerId", 1);
+    jQuery("#share-url").click(function(e) {
+      var sessionIdFromShareUrl = getURLParameter(jQuery("#share-url").val(), "npSessionId", 1);
+      var defaultServerFromShareUrl = getURLParameter(jQuery("#share-url").val(), "npServerId", 1);
       if(sessionIdFromShareUrl) showConnected(sessionIdFromShareUrl, defaultServerFromShareUrl);
 
       e.stopPropagation();
       e.preventDefault();
-      $("#share-url").select();
+      jQuery("#share-url").select();
     });
 
     // listen for clicks on the "Copy URL" link
-    $("#copy-btn").click(function(e) {
-      console.log("click");
-      var sessionIdFromShareUrl = getURLParameter($("#share-url").val(), "npSessionId", 1);
-      var defaultServerFromShareUrl = getURLParameter($("#share-url").val(), "npServerId", 1);
+    jQuery("#copy-btn").click(function(e) {
+      console.debug("clicked copy button");
+      var sessionIdFromShareUrl = getURLParameter(jQuery("#share-url").val(), "npSessionId", 1);
+      var defaultServerFromShareUrl = getURLParameter(jQuery("#share-url").val(), "npServerId", 1);
       if(sessionIdFromShareUrl) showConnected(sessionIdFromShareUrl, defaultServerFromShareUrl);
       e.stopPropagation();
       e.preventDefault();
-      $("#share-url").select();
+      jQuery("#share-url").select();
       document.execCommand("copy");
     });
   });
