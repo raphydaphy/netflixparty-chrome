@@ -23,6 +23,8 @@ function netflixParty() {
 
   var socket;
 
+  var incognito = chrome.extension.inIncognitoContext;
+
   var originalTitle = document.title;
   var unreadMsgCount = 0;
 
@@ -140,12 +142,17 @@ function netflixParty() {
     jQuery(".nickname-input input").val(name);
   }
 
-  chrome.storage.local.get(null, function(data) {
-    userId = data.userId;
-    userToken = data.userToken;
+  // Only retrieve cached data if not in incognito
+  if (incognito) {
+    console.debug("Running in incognito mode");
+  } else {
+    chrome.storage.local.get(null, function(data) {
+      userId = data.userId;
+      userToken = data.userToken;
 
-    console.debug("Recieved cached user data");
-  });
+      console.debug("Recieved cached user data");
+    });
+  }
 
   function afterInject() {
     console.debug("Injected chat HTML");
@@ -238,14 +245,19 @@ function netflixParty() {
    *****************/
 
   function initSocket() {
-    socket = io(`https://netflixparty.raphydaphy.com?userid=${userId}&token=${userToken}`);
+    var socketURL = "https://netflixparty.raphydaphy.com?";
+    if (incognito) socketURL += "incognito=true";
+    else socketURL += `userid=${userId}&token=${userToken}`
+    socket = io(socketURL);
 
     socket.on("error", data => {
       console.warn("Authentication error: " + data);
     });
 
     socket.on("init", data => {
-      console.debug("Connected as " + data.userName + " with icon " + data.userIcon + "!");
+      console.debug(`Connected as ${data.userName} with icon ${data.userIcon} and id #${data.userId}!`);
+      
+      userId = data.userId;
       userName = data.userName;
       userIcon = data.userIcon;
 
@@ -254,7 +266,7 @@ function netflixParty() {
     });
   }
 
-  delayUntil(() => userId != undefined, 5000)().then(initSocket);
+  delayUntil(() => incognito || userId != undefined, 5000)().then(initSocket);
 }
 
 netflixParty();
