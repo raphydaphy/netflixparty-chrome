@@ -188,6 +188,7 @@ function netflixParty() {
     var likesDiv = getOrCreateLikesDiv(msgId, tutorial ? "Double click to like" : null);
     var heart = likesDiv.children(".icon-heart").first();
     var heartIcon = heart.children(".icon").first().children(".fa-heart").first();
+    if (likeTutorial) heartIcon.attr("title", "");
     if (empty) {
       heart.addClass("heart-empty");
       heart.removeClass("heart-full");
@@ -273,12 +274,6 @@ function netflixParty() {
         msgId: msg.id,
         userId: like
       }, false);
-    }
-
-    if (!msg.isSystemMsg && !likeTutorial) {
-      setTimeout(() => {
-        if (!likeTutorial) addHeartIcon(msg.id, true, true);
-      }, 1000);
     }
   }
 
@@ -524,6 +519,12 @@ function netflixParty() {
         return console.error("Recieved message from user in a different session", data.message);
       }
       addMessage(data.message);
+
+      if (!likeTutorial && data.message.userId != userId && !data.message.isSystemMsg) {
+        setTimeout(() => {
+          if (!likeTutorial) addHeartIcon(data.message.id, true, true);
+        }, 1000);
+      }
     });
 
     socket.on("likeMessage", function(data) {
