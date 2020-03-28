@@ -1,5 +1,7 @@
 'use strict';
 
+const serverURL = "https://netflixparty.raphydaphy.com";
+
 // log events
 function logEvent(eventType) {
   var numTries = 0;
@@ -29,7 +31,7 @@ function logEvent(eventType) {
         console.debug("event: " + JSON.stringify(data));
 
         var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-        xmlhttp.open("POST", "https://netflixparty.raphydaphy.com/log-event");
+        xmlhttp.open("POST", serverURL + "/log-event");
         xmlhttp.setRequestHeader("Content-Type", "application/json");
         xmlhttp.send(JSON.stringify(data));
         
@@ -93,7 +95,7 @@ function createUser(name) {
       }
     }
   }
-  xhr.open("POST", "https://netflixparty.raphydaphy.com/create-user", true);
+  xhr.open("POST", serverURL + "/create-user", true);
   xhr.setRequestHeader("Content-Type", "application/json");
   xhr.send(JSON.stringify({name: name}));
 }
@@ -106,7 +108,7 @@ function validateToken(id, token, fn) {
       fn(response.result);
     }
   }
-  xhr.open("POST", "https://netflixparty.raphydaphy.com/validate-token", true);
+  xhr.open("POST", serverURL + "/validate-token", true);
   xhr.setRequestHeader("Content-Type", "application/json");
   xhr.send(JSON.stringify({
     userid: id,
@@ -148,7 +150,7 @@ chrome.runtime.onMessage.addListener(
     console.debug(sender.tab ? "from a content script:" + sender.tab.url : "from the extension");
     if (request.summary) {
       var xmlhttp = new XMLHttpRequest();   // new HttpRequest instance 
-      xmlhttp.open("POST", "https://netflixparty.raphydaphy.com/log-summary", true);
+      xmlhttp.open("POST", serverURL + "/log-summary", true);
       xmlhttp.setRequestHeader("Content-Type", "application/json");
       xmlhttp.send(JSON.stringify(request.summary));
 

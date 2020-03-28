@@ -28,7 +28,7 @@ chrome.tabs.query({
   var contentScript = "main.js";
 
   // error handling
-  function showErr(err) {
+  function showError(err) {
     jQuery(".some-error").removeClass("hidden");
     jQuery(".no-error").addClass("hidden");
     jQuery("#error-msg").html(err);
@@ -60,7 +60,7 @@ chrome.tabs.query({
         data: data
       }, function(response) {
         stopSpinning();
-        if (response.errorMessage) return showError(response.errorMessage);
+        if (response.error) return showError(response.error);
         if (callback) callback(response);
       });
     });
@@ -94,21 +94,14 @@ chrome.tabs.query({
       videoDomId = initData.videoDomId;
     }
 
-
-    // initial state
-    if (initData.errorMessage) {
-      showError(initData.errorMessage);
-      return;
-    }
     if (initData.sessionId === undefined) {
       var sessionIdFromUrl = getURLParameter(tab.url, "npSessionId");
       if (sessionIdFromUrl) {
         sendMessage("joinSession", {
           sessionId: sessionIdFromUrl.replace(/^\s+|\s+$/g, "").toLowerCase(),
-          videoId: videoId,
-          showChat: true
+          videoId: videoId
         }, function(response) {
-          showConnected(sessionIdFromUrl);
+          showConnected(response.sessionId);
         });
       }
     } else {
@@ -121,8 +114,7 @@ chrome.tabs.query({
     jQuery("#create-session").click(function() {
       sendMessage("createSession", {
         controlLock: jQuery("#control-lock").is(":checked"),
-        videoId: videoId,
-        showChat: true
+        videoId: videoId
       }, function(response) {
         showConnected(response.sessionId);
       });

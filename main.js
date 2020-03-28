@@ -18,13 +18,18 @@ function netflixParty() {
   // Used to identify & authenticate the user
   var userId;
   var userToken;
-  var userName;
-  var userIcon;
+
+  // An empty heart will appear on the first message the user recieves
+  var likeTutorial = false;
+
+  var session;
+  var users = {};
 
   var socket;
 
   var incognito = chrome.extension.inIncognitoContext;
 
+  var curURL;
   var originalTitle = document.title;
   var unreadMsgCount = 0;
 
@@ -75,8 +80,10 @@ function netflixParty() {
       jQuery('.sizing-wrapper').addClass('with-chat');
       jQuery('.sizing-wrapper').css('right', 280 + 'px');
       jQuery('#chat-wrapper').show();
-      setOwnIcon(userIcon);
-      setOwnName(userName);
+      if (userId && users[userId]) {
+        setOwnIcon(users[userId].icon);
+        setOwnName(users[userId].name);
+      }
       if (!document.hasFocus()) {
         clearUnreadCount();
       }
@@ -142,6 +149,156 @@ function netflixParty() {
     jQuery(".nickname-input input").val(name);
   }
 
+  function scrollMessages() {
+    jQuery("#chat-history").scrollTop(jQuery("#chat-history").prop("scrollHeight"));
+  }
+
+  function likeMessage(msg) {
+    if (!msg.likes.hasOwnProperty(userId) && !msg.isSystemMsg) {
+      socket.emit("likeMessage", {
+        msgId: msg.id
+      });
+    }
+  }
+
+  function getOrCreateLikesDiv(msgId, hoverText=null) {
+    var msgDiv = jQuery("#msg-" + msgId).children(".msg-txt").first();
+    var likesDiv = msgDiv.children(".msg-likes");
+    if (likesDiv.length == 0) {
+      msgDiv.append(`
+        <div class="msg-likes">
+          <div class="icon-heart">
+            <div class="icon">
+              <i ${hoverText ? `title="${hoverText}"` : ""} class="unselectable fa-heart"></i>
+            </div>
+          </div>
+        </div>
+      `);
+      likesDiv = msgDiv.children(".msg-likes");
+      likesDiv.children(".icon-heart").click(e => {
+        likeMessage(session.messages[msgId]);
+      });
+    }
+    return likesDiv;
+  }
+
+  function addHeartIcon(msgId, empty=true, tutorial=false) {
+    console.log("empty: " + empty)
+    var msgDiv = jQuery("#msg-" + msgId).children(".msg-txt").first();
+    var likesDiv = getOrCreateLikesDiv(msgId, tutorial ? "Double click to like" : null);
+    var heart = likesDiv.children(".icon-heart").first();
+    var heartIcon = heart.children(".icon").first().children(".fa-heart").first();
+    if (empty) {
+      heart.addClass("heart-empty");
+      heart.removeClass("heart-full");
+
+      heartIcon.addClass("far");
+      heartIcon.removeClass("fas");
+    } else {
+      heart.addClass("heart-full");
+      heart.removeClass("heart-empty");
+
+      heartIcon.addClass("fas");
+      heartIcon.removeClass("far");
+    }
+
+    likeTutorial = true;
+    return likesDiv;
+  }
+
+  function addLike(data, updateArray=true) {
+    if (!users.hasOwnProperty(data.userId)) {
+      console.warn("Recieved like from unknown user " + data.userId + " for message with id " + data.msgId);
+      return;
+    } else if (!session.messages.hasOwnProperty(data.msgId)) {
+      console.warn("User " + data.userId + " tried to like unknown message " + data.msgId);
+      return;
+    }
+
+    var msg = session.messages[data.msgId];
+
+    if (updateArray) {
+      msg.likes[data.userId] = {
+        userId: data.userId,
+        timestamp: data.timestamp
+      };
+    }
+
+    console.log("id: " + userId, msg.likes)
+
+    var likesDiv = addHeartIcon(msg.id, !msg.likes.hasOwnProperty(userId));
+
+    likesDiv.first().append(`
+      <div class="icon-heart unselectable">
+        <div class="icon unselectable">
+          <img class="unselectable" title="Liked by ${users[data.userId].name}" src="${getIconURL(users[data.userId].icon)}">
+        </div>
+      </div>
+    `);
+    scrollMessages();
+  }
+
+  function addMessage(msg) {
+    if (!users.hasOwnProperty(msg.userId)) {
+      console.warn("Tried to add message from invalid user " + msg.userId, msg);
+      return;
+    }
+
+    var userName = users[msg.userId].name;
+
+    var format = jQuery(`
+      <div class="msg-container" id="msg-${msg.id}">
+        <div class="icon-name">
+          <div class="icon">
+            <img class="unselectable" src="${getIconURL(users[msg.userId].icon)}">
+          </div>
+        </div>
+        <div class="msg-txt message${ msg.isSystemMsg ? "-system" : "-txt" }">
+          <h3>${userName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</h3>
+          <p>${msg.content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+        </div>
+      </div>
+    `).appendTo(jQuery("#chat-history")).data("messageId", msg.id).data("userName", userName);
+
+    jQuery("#msg-" + msg.id).dblclick(e => {
+      likeMessage(msg);
+    });
+
+    scrollMessages();
+
+    session.messages[msg.id] = msg;
+
+    for (like in msg.likes) {
+      addLike({
+        msgId: msg.id,
+        userId: like
+      }, false);
+    }
+
+    if (!msg.isSystemMsg && !likeTutorial) {
+      setTimeout(() => {
+        if (!likeTutorial) addHeartIcon(msg.id, true, true);
+      }, 1000);
+    }
+  }
+
+  function initSession(newSession) {
+    session = newSession;
+    setChatVisible(true);
+    for (var messageId in session.messages) {
+      addMessage(session.messages[messageId]);
+    }
+  }
+
+  function leaveSession() {
+    if (session) {
+      jQuery("#chat-history").html("");
+      setChatVisible(false);
+      socket.emit("leaveSession");
+      session = null;
+    }
+  }
+
   // Only retrieve cached data if not in incognito
   if (incognito) {
     console.debug("Running in incognito mode");
@@ -174,12 +331,47 @@ function netflixParty() {
 
     jQuery(".btns button").click(e => {
       var nicknameText = jQuery(".nickname-input input").val().replace(/^\s+|\s+$/g, "");
-      if(nicknameText != "" && nicknameText != userName) {
+      if(nicknameText != "" && nicknameText != users[userId].name) {
         socket.emit("changeUsername", {
           name: nicknameText
         });
       }
       toggleIconContainer();
+    });
+
+    jQuery('#link-icon').click(e => {
+      var currVideoUrl = window.location.href.split('?')[0];
+      if(currVideoUrl && session && session.id) {
+        var urlWithSessionId = currVideoUrl + '?npSessionId=' + encodeURIComponent(session.id);
+        console.log("Copied share url", urlWithSessionId);
+
+        const el = document.createElement('textarea');
+        el.value = urlWithSessionId;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+    });
+
+    jQuery("#chat-input").keyup(function(e) {
+      e.stopPropagation();
+
+      // 13 = enter key
+      if (e.which === 13) {
+        var msgContent = jQuery("#chat-input").val();
+
+        jQuery("#chat-input").prop("disabled", true);
+        if (msgContent && msgContent.length > 0) {
+          socket.emit("sendMessage", {
+            content: msgContent
+          }, response => {
+            jQuery("#chat-input").val("").prop("disabled", false).focus();
+            if (response.error) return console.warn("Failed to send message:", response.error);
+            addMessage(response.message);
+          });
+        }
+      }
     });
   }
 
@@ -195,34 +387,52 @@ function netflixParty() {
     }
   }
 
-  
-
-  /***************************
-   * Chrome Message Handling *
-   ***************************/
+  /*************************
+   * Chrome Event Handling *
+   *************************/
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.type) {
       case "getInitData":
+        // TODO
         sendResponse({
-          sessionId: undefined,
+          sessionId: session ? session.id : undefined,
           videoDomId: undefined,
           chatVisible: isChatVisible()
         });
         return true;
       case "createSession":
-        if (request.data.showChat) setChatVisible(true);
-        sendResponse({
-          sessionId: "undefined"
+        socket.emit("createSession", {
+          videoService: "netflix",
+          videoId: request.data.videoId,
+          controlLock: request.data.controlLock
+        }, response => {
+          if (response.error) return sendResponse({error: response.error});
+          console.debug("Created session #" + response.session.id);
+          initSession(response.session);
+          sendResponse({
+            sessionId: session.id
+          });
         });
         return true;
       case "joinSession":
         // sessionId, videoId
-        if (request.data.showChat) setChatVisible(true);
-        sendResponse({});
+        socket.emit("joinSession", {
+          id: request.data.sessionId,
+          videoService: "netflix",
+          videoId: request.data.videoId
+        }, response => {
+          if (response.error) return sendResponse({error: response.error});
+          console.debug("Joined session #" + response.session.id);
+          users = response.users;
+          initSession(response.session);
+          sendResponse({
+            sessionId: response.session.id
+          });
+        });
         return true;
       case "leaveSession":
-        setChatVisible(false);
+        leaveSession();
         sendResponse({});
         return true;
       case "showChat":
@@ -232,12 +442,19 @@ function netflixParty() {
       case "urlChanged":
         sendResponse({});
         injectHtml();
+        if (!request.data.url.includes("watch")) {
+          leaveSession();
+        }
         return true;
       default:
         console.log("Recieved invalid message: " + request.type);
         sendResponse({errorMessage: "Invalid message"});
         return true;
     }
+  });
+
+  window.addEventListener("beforeunload", (event) => {
+    if (socket) socket.emit("userDisconnected");
   });
 
   /*****************
@@ -255,18 +472,67 @@ function netflixParty() {
     });
 
     socket.on("init", data => {
-      console.debug(`Connected as ${data.userName} with icon ${data.userIcon} and id #${data.userId}!`);
-      
-      userId = data.userId;
-      userName = data.userName;
-      userIcon = data.userIcon;
+      console.debug(`Connected as ${data.user.name} with icon ${data.user.icon} and id #${data.user.id}!`);
 
-      setOwnIcon(userIcon);
-      setOwnName(userName);
+      userId = data.user.id;
+      users[userId] = data.user;
+
+      setOwnIcon(data.user.icon);
+      setOwnName(data.user.name);
+    });
+
+    /******************
+     * Session Events *
+     ******************/
+
+    socket.on("joinSession", data => {
+      if (!session) return console.error("Recieved join message from user #" + data.user.id + " despite not being in a session!");
+
+      console.debug("User #" + data.user.id + " joined the session!");
+      users[data.user.id] = data.user;
+
+      session.users.push(data.user.id);
+      addMessage(data.message);
+    });
+
+    socket.on("leaveSession", data => {
+      if (!session) {
+        return console.error("Recieved leave message from user #" + data.userId + " despite not being in a session!");
+      } else if (!session.users.includes(data.userId)) {
+        return console.error("User #" + data.userId + " left session that they weren't in");
+      }
+
+      console.debug("User #" + data.userId + " left the session!");
+      addMessage(data.message);
+      users[data.userId].active = false;
+    });
+
+    socket.on("disconnect", reason => {
+      if (reason == "io server disconnect") {
+        console.debug("Socket was disconnected by the server");
+      }
+    });
+
+    /***************
+     * Chat Events *
+     ***************/
+
+    socket.on("sendMessage", data => {
+      if (!session) {
+        return console.error("Recieved message despite not being in a session", data.message);
+      } else if (!session.users.includes(data.message.userId)) {
+        return console.error("Recieved message from user in a different session", data.message);
+      }
+      addMessage(data.message);
+    });
+
+    socket.on("likeMessage", function(data) {
+
+      addLike(data);
     });
   }
 
-  delayUntil(() => incognito || userId != undefined, 5000)().then(initSocket);
+  delayUntil(() => incognito || userId, 5000)().then(initSocket);
 }
 
 netflixParty();
