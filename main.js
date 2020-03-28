@@ -153,11 +153,15 @@ function netflixParty() {
     jQuery("#chat-history").scrollTop(jQuery("#chat-history").prop("scrollHeight"));
   }
 
+  function unlikeMessage(msg) {
+    if (msg.likes.hasOwnProperty(userId) && !msg.isSystemMsg) {
+      socket.emit("unlikeMessage", {msgId: msg.id});
+    }
+  }
+
   function likeMessage(msg) {
     if (!msg.likes.hasOwnProperty(userId) && !msg.isSystemMsg) {
-      socket.emit("likeMessage", {
-        msgId: msg.id
-      });
+      socket.emit("likeMessage", {msgId: msg.id});
     }
   }
 
@@ -176,15 +180,16 @@ function netflixParty() {
       `);
       likesDiv = msgDiv.children(".msg-likes");
       likesDiv.children(".icon-heart").click(e => {
-        likeMessage(session.messages[msgId]);
+        var message = session.messages[msgId];
+        // If they have already liked the message, clicking the heart removes the like
+        if (message.likes.hasOwnProperty(userId)) return unlikeMessage(message);
+        likeMessage(message);
       });
     }
     return likesDiv;
   }
 
   function addHeartIcon(msgId, empty=true, tutorial=false) {
-    console.log("empty: " + empty)
-    var msgDiv = jQuery("#msg-" + msgId).children(".msg-txt").first();
     var likesDiv = getOrCreateLikesDiv(msgId, tutorial ? "Double click to like" : null);
     var heart = likesDiv.children(".icon-heart").first();
     var heartIcon = heart.children(".icon").first().children(".fa-heart").first();
@@ -207,7 +212,40 @@ function netflixParty() {
     return likesDiv;
   }
 
-  function addLike(data, updateArray=true) {
+  function addLikes(msgId, likes, updateArray=true) {
+    if (!session.messages.hasOwnProperty(msgId)) {
+      console.warn("Recieved " + Object.keys(likes).length + " likes on unknown message #" + msgId);
+      return;
+    }
+
+    var msg = session.messages[msgId];
+    var userIds = [];
+
+    for (var uid in likes) {
+      if (!users.hasOwnProperty(uid)) {
+        console.warn("Recieved like from unknown user (#" + uid + ") for message #" + msgId);
+      } else {
+        userIds.push(uid);
+        if (updateArray) msg.likes[uid] = likes[uid];
+      }
+    }
+
+    if (userIds.length == 0) return;
+
+    var likesDiv = addHeartIcon(msg.id, !msg.likes.hasOwnProperty(userId));
+
+    userIds.forEach(uid => {
+      likesDiv.first().append(`
+        <div class="icon-heart unselectable">
+          <div class="icon unselectable">
+            <img class="unselectable" title="Liked by ${users[uid].name}" src="${getIconURL(users[uid].icon)}">
+          </div>
+        </div>
+      `);
+    });
+  }
+
+  function removeLike(data) {
     if (!users.hasOwnProperty(data.userId)) {
       console.warn("Recieved like from unknown user " + data.userId + " for message with id " + data.msgId);
       return;
@@ -217,26 +255,15 @@ function netflixParty() {
     }
 
     var msg = session.messages[data.msgId];
+    delete msg.likes[data.userId];
 
-    if (updateArray) {
-      msg.likes[data.userId] = {
-        userId: data.userId,
-        timestamp: data.timestamp
-      };
+    jQuery("#msg-" + msg.id).children(".msg-txt").first().children(".msg-likes").remove();
+
+    console.log("remaining likes", msg.likes);
+    if (Object.keys(msg.likes).length > 0) {
+      console.log("adding new likes");
+      addLikes(msg.id, msg.likes, false);
     }
-
-    console.log("id: " + userId, msg.likes)
-
-    var likesDiv = addHeartIcon(msg.id, !msg.likes.hasOwnProperty(userId));
-
-    likesDiv.first().append(`
-      <div class="icon-heart unselectable">
-        <div class="icon unselectable">
-          <img class="unselectable" title="Liked by ${users[data.userId].name}" src="${getIconURL(users[data.userId].icon)}">
-        </div>
-      </div>
-    `);
-    scrollMessages();
   }
 
   function addMessage(msg) {
@@ -269,12 +296,7 @@ function netflixParty() {
 
     session.messages[msg.id] = msg;
 
-    for (like in msg.likes) {
-      addLike({
-        msgId: msg.id,
-        userId: like
-      }, false);
-    }
+    addLikes(msg.id, msg.likes, false);
   }
 
   function initSession(newSession) {
@@ -527,10 +549,15 @@ function netflixParty() {
       }
     });
 
-    socket.on("likeMessage", function(data) {
-
-      addLike(data);
+    socket.on("likeMessage", data => {
+      addLikes(data.msgId, {
+        [data.userId]: {
+          userId: data.userId,
+          timestamp: data.timestamp
+        }
+      });
     });
+    socket.on("unlikeMessage", data => removeLike(data));
   }
 
   delayUntil(() => incognito || userId, 5000)().then(initSocket);
