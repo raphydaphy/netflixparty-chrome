@@ -67,6 +67,17 @@ function netflixParty() {
     };
   };
 
+  function getUserStatus(id) {
+    if (!session) {
+      return {error: "Not in a session"};
+    } else if (!users.hasOwnProperty(id)) {
+      return {error: "Unknown user"};
+    } else if (!session.users.includes(id)) {
+      return {error: "Incorrect session"};
+    }
+    return {user: users[id]};
+  }
+
   function clearUnreadCount() {
     if (unreadMsgCount > 0) {
       unreadMsgCount = 0;
@@ -107,6 +118,11 @@ function netflixParty() {
       jQuery("#chat-history-container").show();
       jQuery("#chat-input-container").show();
       jQuery("#patreon-container").show();
+      scrollMessages();
+
+      // Focus the chat when leaving the settings panel
+      var chatInput = jQuery("#chat-input");
+      if (!chatInput.prop("disabled")) chatInput.focus();
     } else {
       jQuery("#chat-icon-container").data("active", true);
       jQuery(".chat-settings-container").show();
@@ -122,14 +138,31 @@ function netflixParty() {
     return iconName ? chrome.runtime.getURL("inc/img/" + iconName + ".svg") : "";
   }
 
+  function setOwnIcon(iconName) {
+    var iconURL = getIconURL(iconName);
+    jQuery("#user-icon").children("img").attr("src", iconURL);
+    jQuery(".user-icon").children("img").attr("src", iconURL);
+  }
+
+  function setOwnName(name) {
+    jQuery(".nickname-input input").val(name);
+  }
+
   function changeIcon(icon) {
     socket.emit("changeIcon", {
       icon: icon
+    }, response => {
+      if (response.error) return console.warn("Failed to change icon:", response.error);
+
+      console.debug("Changed icon from " + users[userId].icon + " to " + icon);
+      setOwnIcon(response.icon);
+      users[userId].icon = response.icon;
+      if (session) addMessage(response.message);
+
+      jQuery("#chat-icon-container").hide();
+      jQuery(".chat-settings-container").show();
     });
-    
-    setOwnIcon(icon);
-    jQuery("#chat-icon-container").hide();
-    jQuery(".chat-settings-container").show();
+
   }
 
   function createIconButton(i) {
@@ -142,16 +175,6 @@ function netflixParty() {
     jQuery("#user-icon-" + icons[i]).click(e => {
       changeIcon(icons[i]);
     });
-  }
-
-  function setOwnIcon(iconName) {
-    var iconURL = getIconURL(iconName);
-    jQuery("#user-icon").children("img").attr("src", iconURL);
-    jQuery(".user-icon").children("img").attr("src", iconURL);
-  }
-
-  function setOwnName(name) {
-    jQuery(".nickname-input input").val(name);
   }
 
   function scrollMessages() {
@@ -247,6 +270,8 @@ function netflixParty() {
           </div>
         </div>
       `);
+
+      scrollMessages();
     });
   }
 
@@ -264,9 +289,7 @@ function netflixParty() {
 
     jQuery("#msg-" + msg.id).children(".msg-txt").first().children(".msg-likes").remove();
 
-    console.log("remaining likes", msg.likes);
     if (Object.keys(msg.likes).length > 0) {
-      console.log("adding new likes");
       addLikes(msg.id, msg.likes, false);
     }
   }
@@ -354,12 +377,17 @@ function netflixParty() {
 
     jQuery(".btns button").click(e => {
       var nicknameText = jQuery(".nickname-input input").val().replace(/^\s+|\s+$/g, "");
-      if(nicknameText != "" && nicknameText != users[userId].name) {
-        socket.emit("changeUsername", {
-          name: nicknameText
-        });
-      }
-      toggleIconContainer();
+      if (!nicknameText || nicknameText == "") return;
+      if(nicknameText == users[userId].name) return toggleIconContainer()
+      socket.emit("changeName", {
+        name: nicknameText
+      }, response => {
+        if (response.error) return console.warn("Failed to change name:", response.error);
+        console.debug("Changed name from " + users[userId].name + " to " + response.name);
+        if (session) addMessage(response.message);
+        users[userId].name = response.name;
+        toggleIconContainer();
+      });
     });
 
     jQuery('#link-icon').click(e => {
@@ -492,7 +520,7 @@ function netflixParty() {
         }
         return true;
       default:
-        console.log("Recieved invalid message: " + request.type);
+        console.error("Recieved invalid message: " + request.type);
         sendResponse({errorMessage: "Invalid message"});
         return true;
     }
@@ -563,11 +591,9 @@ function netflixParty() {
      ***************/
 
     socket.on("sendMessage", data => {
-      if (!session) {
-        return console.error("Recieved message despite not being in a session", data.message);
-      } else if (!session.users.includes(data.message.userId)) {
-        return console.error("Recieved message from user in a different session", data.message);
-      }
+      var userStatus = getUserStatus(data.message.userId);
+      if (userStatus.error) return console.error("Failed to recieve message:", userStatus.error);
+
       addMessage(data.message);
 
       if (!likeTutorial && data.message.userId != userId && !data.message.isSystemMsg) {
@@ -588,13 +614,8 @@ function netflixParty() {
     socket.on("unlikeMessage", data => removeLike(data));
 
     socket.on("typing", data => {
-      if (!session) {
-        return console.error("Recieved typing status despite not being in a session", data);
-      } else if (!users.hasOwnProperty(data.userId)) {
-        return console.warn("Tried to update typing status for unknown user #" + data.userId);
-      } else if (!session.users.includes(data.userId)) {
-        return console.error("Recieved typing status from user in a different session", data);
-      }
+      var userStatus = getUserStatus(data.userId);
+      if (userStatus.error) return console.error("Failed to set typing status:", userStatus.error);
       users[data.userId].typing = data.typing;
       var typingUsers = [];
       session.users.forEach(sessionUserId => {
@@ -613,6 +634,20 @@ function netflixParty() {
         typingMsg = "<br />";
       }
       jQuery("#presence-indicator").html(typingMsg);
+    });
+
+    socket.on("changeName", data => {
+      var userStatus = getUserStatus(data.userId);
+      if (userStatus.error) return console.warn("Failed to rename user:", userStatus.error);
+      users[data.userId].name = data.name;
+      addMessage(data.message);
+    });
+
+    socket.on("changeIcon", data => {
+      var userStatus = getUserStatus(data.userId);
+      if (userStatus.error) return console.warn("Failed to change icon:", userStatus.error);
+      users[data.userId].icon = data.icon;
+      addMessage(data.message);
     });
   }
 
