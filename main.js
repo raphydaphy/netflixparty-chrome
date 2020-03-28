@@ -19,17 +19,22 @@ function netflixParty() {
   var userId;
   var userToken;
 
-  // An empty heart will appear on the first message the user recieves
-  var likeTutorial = false;
-
   var session;
   var users = {};
 
   var socket;
 
+  // An empty heart will appear on the first message the user recieves
+  var likeTutorial = false;
+
+  // Stores the ID of the timer used to track typing status
+  var typingTimer = null;
+
+  // The cached user account is ignored when in incognito mode
   var incognito = chrome.extension.inIncognitoContext;
 
-  var curURL;
+  // Used for the unread message counter
+  // TODO: unread counter
   var originalTitle = document.title;
   var unreadMsgCount = 0;
 
@@ -302,6 +307,7 @@ function netflixParty() {
   function initSession(newSession) {
     session = newSession;
     setChatVisible(true);
+    jQuery("#presence-indicator").html("<br />");
     for (var messageId in session.messages) {
       addMessage(session.messages[messageId]);
     }
@@ -374,20 +380,42 @@ function netflixParty() {
     jQuery("#chat-input").keyup(function(e) {
       e.stopPropagation();
 
-      // 13 = enter key
+      // If the enter key is pressed
       if (e.which === 13) {
-        var msgContent = jQuery("#chat-input").val();
-
-        jQuery("#chat-input").prop("disabled", true);
-        if (msgContent && msgContent.length > 0) {
+        var content = jQuery("#chat-input").val().replace(/^\s+|\s+$/g, "");
+        if (content !== "") {
+          if (typingTimer !== null) {
+            clearTimeout(typingTimer);
+            typingTimer = null;
+            socket.emit("typing", {
+              typing: false
+            });
+          }
+          
+          jQuery("#chat-input").prop("disabled", true);
           socket.emit("sendMessage", {
-            content: msgContent
+            content: content,
+            isSystemMsg: false
           }, response => {
             jQuery("#chat-input").val("").prop("disabled", false).focus();
             if (response.error) return console.warn("Failed to send message:", response.error);
             addMessage(response.message);
           });
         }
+      } else {
+        if (typingTimer === null) {
+          socket.emit("typing", { 
+            typing: true 
+          });
+        } else {
+          clearTimeout(typingTimer);
+        }
+        typingTimer = setTimeout(function() {
+          typingTimer = null;
+          socket.emit("typing", { 
+            typing: false 
+          });
+        }, 500);
       }
     });
   }
@@ -558,6 +586,34 @@ function netflixParty() {
       });
     });
     socket.on("unlikeMessage", data => removeLike(data));
+
+    socket.on("typing", data => {
+      if (!session) {
+        return console.error("Recieved typing status despite not being in a session", data);
+      } else if (!users.hasOwnProperty(data.userId)) {
+        return console.warn("Tried to update typing status for unknown user #" + data.userId);
+      } else if (!session.users.includes(data.userId)) {
+        return console.error("Recieved typing status from user in a different session", data);
+      }
+      users[data.userId].typing = data.typing;
+      var typingUsers = [];
+      session.users.forEach(sessionUserId => {
+        var sessionUser = users[sessionUserId];
+        // Check if the user is active to prevent a prolonged typing status
+        if (sessionUser.active && sessionUser.typing) {
+          typingUsers.push(sessionUser);
+        }
+      });
+      var typingMsg = typingUsers.length + " people are typing...";
+      if (typingUsers.length == 2) {
+        typingMsg = typingUsers[0].name + " and " + typingUsers[1].name + " are typing...";
+      } else if (typingUsers.length == 1) {
+        typingMsg = typingUsers[0].name + " is typing...";
+      } else if (typingUsers.length == 0) {
+        typingMsg = "<br />";
+      }
+      jQuery("#presence-indicator").html(typingMsg);
+    });
   }
 
   delayUntil(() => incognito || userId, 5000)().then(initSocket);
