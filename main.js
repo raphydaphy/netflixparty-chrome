@@ -164,6 +164,10 @@ function netflixParty() {
   // TODO: run this afterInject?
   injectScript(seekScript);
 
+  function watchingEpisode() {
+    return jQuery(".scrubber-head").length > 0;
+  }
+
   function getDuration() {
     var video = jQuery("video");
     if (video.length > 0) {
@@ -231,6 +235,8 @@ function netflixParty() {
 
   // show the playback controls (hides controls after 2.5 secs)
   function showControls() {
+    if (!watchingEpisode()) return;
+
     uiEventsHappening += 1;
     var uiError = false;
     var scrubber;
@@ -416,6 +422,33 @@ function netflixParty() {
         // console.error(Error('seek end'));
       });
     };
+  };    
+
+  function startNextEpisode(nextEpisodeId) {
+    var parseIds = window.location.href.match(/^.*\/([0-9]+)\??.*/);
+    var curVideoId = parseIds.length !== 0 ? parseInt(window.location.href.match(/^.*\/([0-9]+)\??.*/)[1]) : null;
+    session.videoId = nextEpisodeId;
+
+    // jump to next episode if curEpisode != next Epsiode
+    if (curVideoId != nextEpisodeId) {
+      // otherwise click on the autoplay next episode hover container (short episodes like Friends)
+      if (jQuery('.WatchNext-still-hover-container').length > 0) {
+        jQuery('.WatchNext-still-hover-container').click();
+      }
+
+      // click on the next episode button (in the middle of episodes)
+      else if (jQuery('.button-nfplayerNextEpisode').length > 0) {
+        jQuery('.button-nfplayerNextEpisode').click();
+      }
+
+      // otherwise click on the credits next episode button (before AND after credits on long episodes like Umbrella Academy)
+      else if (jQuery('.nf-flat-button-text').length > 0) {
+        if(jQuery('.nf-flat-button-text')[0].text.toLowerCase().includes('next episode')) {
+          jQuery('.nf-flat-button-text')[0].click();
+          // console.log('after credits click');
+        }
+      }
+    }
   };
 
   /*************************
@@ -706,6 +739,25 @@ function netflixParty() {
     }
   }
 
+  function changeVideoId() {
+    if (!session) return;
+    console.debug("URL has changed, attempting to update video ID");
+
+    var newVideoId = parseInt(window.location.href.match(/^.*\/([0-9]+)\??.*/)[1]);
+
+    if (session.videoId == newVideoId) return console.debug("Already updated video ID, skipping..");
+
+    session.videoId = newVideoId;
+    session.lastKnownTime = 0;
+
+    socket.emit("changeVideoId", {
+      newVideoId: session.videoId
+    }, response => {
+      if (response.error) return console.warn("Failed to change video ID:", response.error);
+      if (response.message) addMessage(response.message);
+    });
+  }
+
   // Only retrieve cached data if not in incognito
   if (incognito) {
     console.debug("Running in incognito mode");
@@ -755,7 +807,7 @@ function netflixParty() {
       var currVideoUrl = window.location.href.split("?")[0];
       if(currVideoUrl && session && session.id) {
         var urlWithSessionId = currVideoUrl + "?npSessionId=" + encodeURIComponent(session.id);
-        console.log("Copied share url", urlWithSessionId);
+        console.debug("Copied share url", urlWithSessionId);
 
         const el = document.createElement("textarea");
         el.value = urlWithSessionId;
@@ -949,6 +1001,8 @@ function netflixParty() {
 
   var broadcastState = function(waitForChange) {
     return function() {
+      // Don't broadcast state when in-between episodes
+      if (!watchingEpisode()) return Promise.resolve();
       var localTime = getPlaybackPosition() || "not defined";
       var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
       // console.log("localtime, internal servertime, session.state: " + localTime + ", " + serverTime + ", " + session.state);
@@ -973,6 +1027,8 @@ function netflixParty() {
       var alreadyUpdated = false;
       var bufferingState = false;
       return promise.then(delayUntil(function() {
+        if (!watchingEpisode()) return false;
+
         // get scrubber time
         var localTime = getPlaybackPosition();
         var scrubberHead = jQuery(jQuery(".scrubber-head")[0]);
@@ -1014,10 +1070,16 @@ function netflixParty() {
               buffering: bufferingState // change: bufferingState
             }, function(data) {
               if (data.error) {
-                console.warn("Failed to update session", data.error);
+                console.warn("Failed to update session:" + data.error, {
+                  newLastKnownTime: newLastKnownTime,
+                  newLastKnownTimeUpdatedAt: newLastKnownTimeUpdatedAt,
+                  newState: newState
+                });
+                /*
                 session.lastKnownTime = oldLastKnownTime;
                 session.lastKnownTimeUpdatedAt = oldLastKnownTimeUpdatedAt;
                 session.state = oldState;
+                */
                  // reject();
               } else {
                 if (data.message) addMessage(data.message); // resolve();
@@ -1064,7 +1126,6 @@ function netflixParty() {
               videoDuration: getDuration(),
               buffering: bufferingState
             }, function(data) {
-              console.log("got update from server", data);
               if (data.error) {
                 session.lastKnownTime = oldLastKnownTime;
                 session.lastKnownTimeUpdatedAt = oldLastKnownTimeUpdatedAt;
@@ -1116,6 +1177,8 @@ function netflixParty() {
     console.log("received session update: ", data);
     // console.log("received data: " + getDuration());
 
+    if (data.message) addMessage(data.message);
+
     // TODO: sync from end ?
     if(syncFromEnd) {
       // try to sync to local video duration - lastKnownTimeRemaining from server update
@@ -1143,33 +1206,19 @@ function netflixParty() {
 
   // returns true if a user action is on a next episode button
   function isNextEpisodeClick(target) {
-    if(jQuery(target).hasClass('button-nfplayerNextEpisode')) {
-      console.log('BUTTON NEXT EPISODE CLICK?:')
-      return true;
-    }
+    if(jQuery(target).hasClass('button-nfplayerNextEpisode')) return true;
     // otherwise click on the autoplay next episode hover container (short episodes like Friends)
-    else if (jQuery(target).hasClass('WatchNext-still-hover-container')) {
-      console.log('HOVER NEXT EPISODE CLICK');
-      return true;
-    }
+    if (jQuery(target).hasClass('WatchNext-still-hover-container')) return true;
 
-    else if (jQuery(target).hasClass('PlayIcon')) {
-      console.log('HOVER NEXT EPISODE CLICK');
-      return true;
-    }
-     // click on the next episode button (in the middle of episodes)
-    else if (jQuery(target).hasClass('button-nfplayerNextEpisode').length > 0) {
-      // jQuery('.button-nfplayerNextEpisode').click()
-      return true;
-    }
+    if (jQuery(target).hasClass('PlayIcon')) return true;
+
+    // click on the next episode button (in the middle of episodes)
+    if (jQuery(target).hasClass('button-nfplayerNextEpisode').length > 0) return true;
+
     // otherwise click on the credits next episode button (before AND after credits on long episodes like Umbrella Academy)
     else if (jQuery(target).hasClass('nf-flat-button-text')) {
-      console.log('CREDITS NEXT EPISODE CLICK?:' + jQuery(target).text());
-
       if(jQuery(target).text().toLowerCase().includes('next episode')) {
         return true;
-        // jQuery('.nf-flat-button-text')[0].click();
-        // console.log('after credits click');
       }
     } else {
       return false;
@@ -1177,7 +1226,6 @@ function netflixParty() {
   }
 
   function mouseupListener() {
-    console.log("mouseup");
     // console.log(jQuery(event.target).attr('class'));
     // console.log(jQuery(event.target).text());
     // console.log(jQuery(event.target).hasClass('button-nfplayerNextEpisode'));
@@ -1192,6 +1240,7 @@ function netflixParty() {
     } else {
       // TODO: next episode
       console.debug("Next episode button clicked, panic!");
+
       //setSessionEnabled(false);
       // oldSessionId = sessionId;
       // sessionId = null;
@@ -1257,9 +1306,7 @@ function netflixParty() {
           console.debug("Joined session #" + response.session.id);
           users = response.users;
           initSession(response.session);
-          console.group("Joined Session");
-          console.dir(session);
-          console.groupEnd();
+          pushTask(sync, "joinSession sync");
           sendResponse({
             sessionId: response.session.id
           });
@@ -1278,6 +1325,8 @@ function netflixParty() {
         injectHtml();
         if (!request.data.url.includes("watch")) {
           leaveSession();
+        } else if (session) {
+          changeVideoId();
         }
         return true;
       default:
@@ -1297,7 +1346,6 @@ function netflixParty() {
 
   function initSocket() {
     var socketURL = "https://netflixparty.raphydaphy.com?";
-    var socketURL = "http://localhost:3000?"
     if (incognito) socketURL += "incognito=true";
     else socketURL += `userid=${userId}&token=${userToken}`
     socket = io(socketURL);
@@ -1439,7 +1487,7 @@ function netflixParty() {
       othersAreBuffering = bufferingUsers.length > 0;
 
       if (othersAreBuffering) {
-        console.log(bufferingUsers.length + " users are buffering...");
+        console.debug(bufferingUsers.length + " users are buffering...");
       }
 
       var time = new Date();
@@ -1451,6 +1499,11 @@ function netflixParty() {
     socket.on("updateSession", function(data) {
       pushTask(updateSession(data), "updateSession from socket");
     });
+
+    socket.on("changeVideoId", function(data) {
+      startNextEpisode(data.newVideoId);
+      if (data.message) addMessage(data.message);
+    })
   }
 
   delayUntil(() => incognito || userId, 5000)().then(initSocket);
