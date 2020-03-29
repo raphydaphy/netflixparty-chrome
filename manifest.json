@@ -3,7 +3,7 @@
 
   "name": "Netflix Party+",
   "description": "Watch Netflix with your friends while in self-isolation - now with more funcionality!",
-  "version": "2.0",
+  "version": "1.0",
   "permissions": [
       "activeTab",
       "declarativeContent",
