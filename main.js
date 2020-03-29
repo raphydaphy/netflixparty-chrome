@@ -19,6 +19,7 @@ function netflixParty() {
   var userId;
   var userToken;
 
+  // All the data from the server session object as well as videoDuration
   var session;
   var users = {};
 
@@ -30,12 +31,18 @@ function netflixParty() {
 
   // Stores the ID of the timer used to track typing status
   var typingTimer = null;
+  
+  // Used to periodically sync the video playback
+  var syncInterval = null;
 
   // The cached user account is ignored when in incognito mode
   var incognito = chrome.extension.inIncognitoContext;
 
+  // Used to prevent interference between video sync and session updates
+  var tasks = null;
+  var tasksInFlight = {};
+
   // Used for the unread message counter
-  // TODO: unread counter
   var originalTitle = document.title;
   var unreadMsgCount = 0;
 
@@ -56,11 +63,11 @@ function netflixParty() {
   function delayUntil(condition, maxDelay) {
     return result => {
       var delayStep = 250;
-      var startTime = (new Date()).getTime();
+      var startTime = Date.now();
       var checkForCondition = function() {
         if (condition()) return Promise.resolve(result);
-        if (maxDelay !== null && (new Date()).getTime() - startTime > maxDelay) {
-          return Promise.reject(Error('delayUntil timed out'));
+        if (maxDelay !== null && Date.now() - startTime > maxDelay) {
+          return Promise.reject(Error("delayUntil timed out"));
         }
         return delay(delayStep)().then(checkForCondition);
       };
@@ -90,10 +97,10 @@ function netflixParty() {
   // swallow any errors from an action
   // and log them to the console
   // returns a function that takes in a previous promise result arg that is passed down to swallowed action
-  function swallow(action) {
+  function swallow(action, name) {
     return function(result) {
       return action(result).catch(function(e) {
-        console.error(e);
+        console.error("Failed to swallow task " + name, e);
       });
     };
   };
@@ -110,11 +117,306 @@ function netflixParty() {
   // inject a script onto the Netflix window DOM outside of CRX sandbox
   // with full access to window context
   var injectScript = function(script) {
-    var s = document.createElement('script');
+    var s = document.createElement("script");
     s.textContent = script;
     (document.head||document.documentElement).appendChild(s);
     s.remove();
   }
+
+  // generate a random hash with 64 bits of entropy
+  function hash64() {
+    var result = "";
+    var hexChars = "0123456789abcdef";
+    for (var i = 0; i < 16; i += 1) {
+      result += hexChars[Math.floor(Math.random() * 16)];
+    }
+    return result;
+  }
+
+  /***************
+   * Netflix API *
+   ***************/
+
+  // Possible playback states
+  const states = {
+    playing: "playing",
+    paused: "paused",
+    idle: "idle",
+    loading: "loading"
+  }
+
+  // how many simulated UI events are currently going on
+  // don't respond to UI events unless this is 0, otherwise
+  // we will mistake simulated actions for real ones
+  var uiEventsHappening = 0;
+
+  // whether others are buffering
+  var othersAreBuffering = false;
+
+  // video duration in milliseconds
+  var lastDuration = 60 * 60 * 1000;
+
+  // jump to a specific time in the video
+  var seekErrorRecent = [];
+  var seekErrorMean = 0;
+  var seekScript = `window.seekScriptLoaded=!0;var getVideoPlayer=function(){var e=window.netflix.appContext.state.playerApp.getAPI().videoPlayer,t=e.getAllPlayerSessionIds()[0];return e.getVideoPlayerBySessionId(t)},seekInteraction=function(e){if(e.source==window){if(e.data.type&&"SEEK"==e.data.type)getVideoPlayer().seek(e.data.time);e.data.type&&"teardown"==e.data.type&&(window.removeEventListener("message",seekInteraction,!1),window.seekScriptLoaded=!1)}};window.addEventListener("message",seekInteraction,!1);`;
+  
+  // TODO: run this afterInject?
+  injectScript(seekScript);
+
+  function getDuration() {
+    var video = jQuery("video");
+    if (video.length > 0) {
+      lastDuration = Math.floor((video[0].duration) * 1000);
+    }
+    return lastDuration;
+  };
+
+  function getState() {
+    if (jQuery(".legacy-controls-styles.legacy.dimmed").length > 0) {
+      return states.idle;
+    }
+    if (jQuery(".AkiraPlayerSpinner--container").length > 0) {
+      return states.loading;
+    }
+    if (jQuery(".button-nfplayerPause").length > 0) {
+      return states.playing;
+    } else {
+      return states.paused;
+    }
+  };
+
+  // current playback position in milliseconds
+  function getPlaybackPosition() {
+    if(jQuery("video")[0]) return Math.floor(jQuery("video")[0].currentTime * 1000);
+    return null;
+  };
+
+      // current playback position in milliseconds
+  function getRemainingTime() {
+    if(jQuery("video")[0]) return Math.floor( (jQuery("video")[0].duration - jQuery("video")[0].currentTime) * 1000);
+    return null;
+  };
+
+  // current playback position in milliseconds
+  function getRemainingTimeText() {
+    // if(jQuery("video")[0]) return Math.floor( (jQuery("video")[0].duration - jQuery("video")[0].currentTime) * 1000);
+    if(jQuery(".time-remaining__time")[0]) {
+      var remainingTimeText = jQuery(".time-remaining__time")[0].textContent;
+      if(remainingTimeText  !== "0:00") {
+        return remainingTimeText;
+      }
+    }
+    return null;
+  };
+
+  // wake up from idle mode
+  var wakeUp = function() {
+    uiEventsHappening += 1;
+
+    var idleDisplay = jQuery(".legacy-controls-styles.legacy.dimmed")
+    var eventOptions = {
+      bubbles: true,
+      button: 0,
+      currentTarget: idleDisplay[0]
+    };
+    idleDisplay[0].dispatchEvent(new MouseEvent("mouseover", eventOptions));
+
+    return delayUntil(function() {
+      return getState() !== states.idle;
+    }, 2500)().ensure(function() {
+      uiEventsHappening -= 1;
+    });
+  };
+
+  // show the playback controls (hides controls after 2.5 secs)
+  function showControls() {
+    uiEventsHappening += 1;
+    var uiError = false;
+    var scrubber;
+    // console.log('show controls start');
+    try {
+      var sessionIdString = session ? session.id : "null";
+      // console.log('inshow session.id, uiEventsHappening: ' + sessionIdString + ', ' + uiEventsHappening);
+      scrubber = jQuery(".text-control");
+      // console.log('inshow 2 session.id, uiEventsHappening: ' + sessionIdString + ', ' + uiEventsHappening);
+      var eventOptions = {
+        bubbles: true,
+        button: 0,
+        currentTarget: scrubber[0]
+      };
+      scrubber[0].dispatchEvent(new MouseEvent("mousemove", eventOptions));
+    } catch(e) {
+      console.log("controls not available");
+      // console.error(e);
+      uiEventsHappening -= 1;
+      uiError = true;
+    }
+    return delayUntil(function() {
+      return scrubber && scrubber.is(":visible");
+    }, 1000)().ensure(function() {
+      if(!uiError) uiEventsHappening -= 1;
+      // console.log('show controls end');
+    });
+  };
+
+  // hide the playback controls
+  var hideControls = function() {
+    uiEventsHappening += 1;
+    var player = jQuery(".VideoContainer");
+    var mouseX = 100; // relative to the document
+    var mouseY = 100; // relative to the document
+    var eventOptions = {
+      'bubbles': true,
+      'button': 0,
+      'screenX': mouseX - jQuery(window).scrollLeft(),
+      'screenY': mouseY - jQuery(window).scrollTop(),
+      'clientX': mouseX - jQuery(window).scrollLeft(),
+      'clientY': mouseY - jQuery(window).scrollTop(),
+      'offsetX': mouseX - player.offset().left,
+      'offsetY': mouseY - player.offset().top,
+      'pageX': mouseX,
+      'pageY': mouseY,
+      'currentTarget': player[0]
+    };
+    player[0].dispatchEvent(new MouseEvent("mousemove", eventOptions));
+    return delay(1)().ensure(function() {
+      uiEventsHappening -= 1;
+    });
+  };
+
+  // pause (hide controls after using)
+  var pause = function() {
+    uiEventsHappening += 1;
+    // console.error(Error("pause start"));
+    jQuery(".button-nfplayerPause").click();
+    return delayUntil(function() {
+      return getState() === states.paused;
+    }, 1000)().then(hideControls).ensure(function() {
+      uiEventsHappening -= 1;
+      // console.error(Error("pause end"));
+    });
+  };
+
+  // play
+  var play = function() {
+    uiEventsHappening += 1;
+    // console.error(Error('play start'));
+    jQuery(".button-nfplayerPlay").click();
+    return delayUntil(function() {
+      return getState() === states.playing;
+    }, 2500)().then(hideControls).ensure(function() {
+      uiEventsHappening -= 1;
+      // console.error(Error("play end"));
+    });
+  };
+
+  // freeze playback for some time and then play
+  var freeze = function(milliseconds) {
+    return function() {
+      uiEventsHappening += 1;
+      // console.error(Error("freeze start"));
+      jQuery(".button-nfplayerPause").click();
+      return delay(milliseconds)().then(function() {
+        jQuery(".button-nfplayerPlay").click();
+      }).then(hideControls).ensure(function() {
+        uiEventsHappening -= 1;
+        // console.error(Error("freeze end"));
+      });
+    };
+  };
+
+  // freeze playback until the condition thunk returns true and then play
+  // rejecting if maxDelay time is exceeded
+  // TODO: take a look at error handling
+  var freezeUntil = function(condition, maxDelay) {
+    return function() {
+      uiEventsHappening += 1;
+      // console.error(Error("freezeUntil start"));
+      jQuery(".button-nfplayerPause").click();
+      return delayUntil(condition, maxDelay)().then(function() {
+        jQuery(".button-nfplayerPlay").click();
+      }).then(hideControls).ensure(function() {
+        uiEventsHappening -= 1;
+        // console.error(Error("freezeUntil end"));
+      });
+    };
+  };
+
+  // wait until othersAreBuffering is false;
+  function waitForBuffering() {
+    console.log("called wait function");
+    return function() {
+      uiEventsHappening += 1;
+      jQuery(".button-nfplayerPause").click();
+      // console.error(Error("waitForBuffering start"));
+      return delayUntil(function() {
+        return !othersAreBuffering;
+      }, 5000)().then(function() {
+        jQuery('.button-nfplayerPlay').click();
+      }).then(hideControls).ensure(function() {
+        uiEventsHappening -= 1;
+        // console.error(Error("waitForBuffering end"));
+      });
+    };
+  };
+
+  function seek(milliseconds) {
+    return function() {
+      var time = new Date();
+      var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + " AM";
+      //console.log("seek called w window postMessage: " + milliseconds + timeStatus);
+      // console.error(Error('seek start'));
+
+      uiEventsHappening += 1;
+      var eventOptions, scrubber, oldPlaybackPosition, newPlaybackPosition;
+      var alreadyUpdated = false;
+
+      // send seek event to window w time
+      window.postMessage({ type: "SEEK", time: milliseconds}, "*");
+
+      // delay 250ms to get seek api and start seeking
+      return delay(250)().then(delayUntil(function() {
+
+        // broadcast start of buffering
+        if(!alreadyUpdated) {
+          alreadyUpdated = true;
+          socket.emit("buffering", { buffering: true });
+
+          var time = new Date();
+          var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + " AM";
+          // console.log('simulated seek: buffering start -> server' + timeStatus);
+        }
+
+        newPlaybackPosition = getPlaybackPosition();
+        // return Math.abs(newPlaybackPosition - oldPlaybackPosition) >= 1;
+        return getState() !== states.loading;
+      }, 10000)).catch(function(e) {
+        // broadcast end of buffering (timeout)
+        socket.emit("buffering", { buffering: false });
+
+        var time = new Date();
+        var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + " AM";
+        // console.log('simulated seek timed out: buffering end -> server' + timeStatus);
+      }).then(function() {
+
+        // broadcast end of buffering (finished loading)
+        socket.emit("buffering", { buffering: false });
+
+        var time = new Date();
+        var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + " AM";
+        // console.log('simulated seek finished: buffering end -> server' + timeStatus);
+
+        // compute mean seek error for next time
+        var newSeekError = Math.min(Math.max(newPlaybackPosition - milliseconds, -10000), 10000);
+        shove(seekErrorRecent, newSeekError, 5);
+        seekErrorMean = mean(seekErrorRecent);
+      }).then(hideControls).ensure(function() {
+        uiEventsHappening -= 1;
+        // console.error(Error('seek end'));
+      });
+    };
+  };
 
   /*************************
    * Chat Helper Functions *
@@ -140,15 +442,15 @@ function netflixParty() {
 
   // Query whether the chat sidebar is visible
   function isChatVisible() {
-    return jQuery('.sizing-wrapper').hasClass('with-chat');
+    return jQuery(".sizing-wrapper").hasClass("with-chat");
   };
 
   // Show or hide the chat sidebar
   function setChatVisible(visible) {
     if (visible) {
-      jQuery('.sizing-wrapper').addClass('with-chat');
-      jQuery('.sizing-wrapper').css('right', 280 + 'px');
-      jQuery('#chat-wrapper').show();
+      jQuery(".sizing-wrapper").addClass("with-chat");
+      jQuery(".sizing-wrapper").css("right", "288px");
+      jQuery("#chat-wrapper").show();
       if (userId && users[userId]) {
         setOwnIcon(users[userId].icon);
         setOwnName(users[userId].name);
@@ -157,9 +459,9 @@ function netflixParty() {
         clearUnreadCount();
       }
     } else {
-      jQuery('#chat-wrapper').hide();
-      jQuery('.sizing-wrapper').removeClass('with-chat');
-      jQuery('.sizing-wrapper').css('right', '0px');
+      jQuery("#chat-wrapper").hide();
+      jQuery(".sizing-wrapper").removeClass("with-chat");
+      jQuery(".sizing-wrapper").css("right", "0px");
     }
   };
 
@@ -381,12 +683,13 @@ function netflixParty() {
 
     if (msg.userId != userId && !document.hasFocus()) {
       unreadMsgCount += 1;
-      document.title = '(' + String(unreadMsgCount) + ') ' + originalTitle;
+      document.title = "(" + String(unreadMsgCount) + ") " + originalTitle;
     }
   }
 
   function initSession(newSession) {
     session = newSession;
+    session.videoDuration = getDuration();
     setChatVisible(true);
     jQuery("#presence-indicator").html("<br />");
     for (var messageId in session.messages) {
@@ -448,17 +751,17 @@ function netflixParty() {
       });
     });
 
-    jQuery('#link-icon').click(e => {
-      var currVideoUrl = window.location.href.split('?')[0];
+    jQuery("#link-icon").click(e => {
+      var currVideoUrl = window.location.href.split("?")[0];
       if(currVideoUrl && session && session.id) {
-        var urlWithSessionId = currVideoUrl + '?npSessionId=' + encodeURIComponent(session.id);
+        var urlWithSessionId = currVideoUrl + "?npSessionId=" + encodeURIComponent(session.id);
         console.log("Copied share url", urlWithSessionId);
 
-        const el = document.createElement('textarea');
+        const el = document.createElement("textarea");
         el.value = urlWithSessionId;
         document.body.appendChild(el);
         el.select();
-        document.execCommand('copy');
+        document.execCommand("copy");
         document.body.removeChild(el);
       }
     });
@@ -513,16 +816,408 @@ function netflixParty() {
   }
 
   function injectHtml() {
-    if (jQuery('#chat-wrapper').length === 0) {
+    if (jQuery("#chat-wrapper").length === 0) {
       jQuery.ajax({
         url: chrome.runtime.getURL("inc/sidebar.html"),
         success: result => {
-          jQuery('.sizing-wrapper').after(result);
+          jQuery(".sizing-wrapper").after(result);
           afterInject();
         }
       });
     }
   }
+
+  /***************************
+   * Main Netflix Sync Logic *
+   ***************************/
+
+  // the Netflix player be kept within this many milliseconds of our
+  // internal representation for the playback time
+  var maxTimeError = 2500;
+  var maxFreezeTimeError = 1000;
+
+  // configure sync from end
+  var syncFromEnd = false;
+  var updateSessionTarget = syncFromEnd ? "updateSessionFromEnd" : "updateSession";
+
+  // the session
+  var currentPage = window.location.href;
+
+  // ping the server periodically to estimate round trip time and client-server time offset
+  var roundTripTimeRecent = [];
+  var roundTripTimeMedian = 0;
+  var localTimeMinusServerTimeRecent = [];
+  var localTimeMinusServerTimeMedian = 0;
+
+  var ping = function() {
+    return new Promise((resolve, reject) => {
+      var startTime = Date.now();
+      socket.emit("getServerTime", { version: version }, response => {
+        var now = Date.now();
+
+        // compute median round trip time
+        shove(roundTripTimeRecent, now - startTime, 5);
+        roundTripTimeMedian = median(roundTripTimeRecent);
+
+        // compute median client-server time offset
+        shove(localTimeMinusServerTimeRecent, (now - Math.round(roundTripTimeMedian / 2)) - response.serverTime, 5);
+        localTimeMinusServerTimeMedian = median(localTimeMinusServerTimeRecent);
+        // console.log("localTime - server time median: " + localTimeMinusServerTimeMedian);
+        // console.log("roundTripTimeMedian: " + roundTripTimeMedian);
+
+        resolve();
+      });
+    });
+  };
+
+  // this function should be called periodically to ensure the Netflix
+  // player matches our internal representation of the playback state
+  var sync = function() {
+    if (!session) {
+      // console.log("sync promise resolved");
+      return Promise.resolve();
+    }
+
+    if (session.state === states.paused) {
+      var promise;
+      if (getState() === states.paused) {
+        promise = Promise.resolve();
+      } else {
+        promise = pause();
+      }
+      return promise.then(function() {
+        if (Math.abs(session.lastKnownTime - getPlaybackPosition()) > maxTimeError) {
+          return seek(session.lastKnownTime)();
+        }
+      });
+    } else {
+      return delayUntil(function() {
+        var syncDelayState = getState();
+        // console.log('syncDelayState: ' + getState());
+        var localTime = getPlaybackPosition() || "not defined";
+        var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
+        // console.log("localtime, internal servertime, state: " + localTime + ", " + serverTime + ", " + session.state);
+        return getState() !== states.loading;
+      }, Infinity)().then(function() {
+        var localTime = getPlaybackPosition();
+        var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
+
+        if (Math.abs(localTime - serverTime) > maxTimeError) {
+          // console.log('seek event added to promiseChain due to local time exceeding server time');
+          return seek(serverTime)()
+          .then(function() {
+            // if(othersAreBuffering) {
+            //  return freezeUntil(function() {
+            //     return !othersAreBuffering;
+            //  }, 3000)()
+            // }
+          })
+          .then(function() {
+            var localTime = getPlaybackPosition();
+            var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
+            if (localTime > serverTime && localTime <= serverTime + maxTimeError) {
+              return freeze(localTime - serverTime)();
+            } else {
+              return play();
+            }
+          });
+        } else {
+          return play();
+          // return Promise.resolve();
+        }
+      });
+    }
+  };
+
+  // this is called when we need to send an update to the server
+  // waitForChange is a boolean that indicates whether we should wait for
+  // the Netflix player to update itself before we broadcast
+
+  var logState = false;
+  var oldState = getState();
+
+  // console.log('oldState: ' + oldState);
+  stateTimer = setInterval(function() {
+      oldState = getState();
+      if(logState) {
+        // console.log('oldState: ' + oldState);
+        var localTime = getPlaybackPosition() || "not defined";
+        var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
+        // console.log("localtime, internal servertime, session.state: " + localTime + ", " + serverTime + ", " + session.state);
+      }
+  }, 100);
+
+  var broadcastState = function(waitForChange) {
+    return function() {
+      var localTime = getPlaybackPosition() || "not defined";
+      var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
+      // console.log("localtime, internal servertime, session.state: " + localTime + ", " + serverTime + ", " + session.state);
+
+      // wait for video player session.state to change
+      var promise;
+      if (waitForChange) {
+        var oldPlaybackPosition = getPlaybackPosition();  // TODO: fix crazy errors related to errors getting thrown here between episodes (BIG BUG)
+        // var oldState = getState();
+        var lastState = getState();
+        // console.log("broadcast state, playback: " + oldState + ", " + oldPlaybackPosition);
+        promise = swallow(delayUntil(function() {
+          var newPlaybackPosition = getPlaybackPosition();
+          var newState = getState();
+          // console.log("new broadcast state, playback: " + newState + ", " + newPlaybackPosition);
+          return Math.abs(newPlaybackPosition - oldPlaybackPosition) >= 1500 || newState !== oldState || newState !== lastState;
+        }, 2500), "broadcastState delayUntil")();
+      } else {
+        promise = Promise.resolve();
+      }
+
+      var alreadyUpdated = false;
+      var bufferingState = false;
+      return promise.then(delayUntil(function() {
+        // get scrubber time
+        var localTime = getPlaybackPosition();
+        var scrubberHead = jQuery(jQuery(".scrubber-head")[0]);
+        var scrubberTime = parseInt(scrubberHead.attr("aria-valuenow") * 1000);
+
+        // var sessionIdString = sessionId ? sessionId : "null";
+        // console.log("showControls Start sessionId, uiEventsHappening: " + sessionIdString + ", " + uiEventsHappening);
+        showControls(); // TODO: fix crazy errors related to errors getting thrown here between episodes (BIG BUG)
+        // console.log("showControls End sessionId, uiEventsHappening: " + sessionIdString + ", " + uiEventsHappening);
+
+        // what can i do about this
+
+        var newLastKnownTime = scrubberTime;
+        var newLastKnownTimeRemaining = getDuration() - scrubberTime;
+        var newLastKnownTimeUpdatedAt = Date.now() - localTimeMinusServerTimeMedian;
+        var newState = getState() === states.loading ? states.paused : (getState() === states.playing ? states.playing : states.paused);
+
+        // console.log("currently buffering. current Time: " + localTime + "scrubber time: " + scrubberTime);
+
+        if(!alreadyUpdated) {
+          bufferingState = getState() === states.loading;
+          if(bufferingState) {
+            // broadcast start of buffering
+            alreadyUpdated = true;
+
+            var time = new Date();
+            var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + "AM";
+            // console.log("broadcast user seek: buffering start -> server" + timeStatus);
+
+            // send update video event
+            // console.log("updateSession -> socket connection" + timeStatus);
+            socket.emit(updateSessionTarget, {
+              lastKnownTime: newLastKnownTime,
+              lastKnownTimeUpdatedAt: newLastKnownTimeUpdatedAt,
+              state: newState,
+              lastKnownTimeRemaining: newLastKnownTimeRemaining,
+              lastKnownTimeRemainingText: getRemainingTimeText(),
+              videoDuration: getDuration(),
+              buffering: bufferingState // change: bufferingState
+            }, function(data) {
+              if (data.error) {
+                console.warn("Failed to update session", data.error);
+                session.lastKnownTime = oldLastKnownTime;
+                session.lastKnownTimeUpdatedAt = oldLastKnownTimeUpdatedAt;
+                session.state = oldState;
+                 // reject();
+              } else {
+                if (data.message) addMessage(data.message); // resolve();
+              }
+            });
+          }
+        }
+        return getState() !== states.loading;
+      }, Infinity)).then(function() {
+        // They aren't buffering anymore
+        if(bufferingState) {
+          var time = new Date();
+          var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + "AM";
+          // console.log('broadcast user seek: buffering end -> server' + timeStatus);
+          socket.emit("buffering", { buffering: false });
+        }
+
+        var localTime = getPlaybackPosition();
+        var serverTime = session.lastKnownTime + (session.state === states.playing ? (Date.now() - (session.lastKnownTimeUpdatedAt + localTimeMinusServerTimeMedian)) : 0);
+        var newLastKnownTime = localTime;
+        var newLastKnownTimeUpdatedAt = Date.now() - localTimeMinusServerTimeMedian;
+        var newState = getState() === states.playing ? states.playing : states.paused;
+
+        if (session.state === newState && Math.abs(localTime - serverTime) < 1) {
+          console.groupEnd();
+          return Promise.resolve();
+        } else {
+          var oldLastKnownTime = session.lastKnownTime;
+          var oldLastKnownTimeUpdatedAt = session.lastKnownTimeUpdatedAt;
+          var oldState = session.state;
+
+          session.lastKnownTime = newLastKnownTime;
+          session.lastKnownTimeUpdatedAt = newLastKnownTimeUpdatedAt;
+          session.state = newState;
+
+          return new Promise(function(resolve, reject) {
+            // console.log('updateSession -> socket connection');
+            socket.emit(updateSessionTarget, {
+              lastKnownTime: newLastKnownTime,
+              lastKnownTimeUpdatedAt: newLastKnownTimeUpdatedAt,
+              state: newState,
+              lastKnownTimeRemaining: getRemainingTime(),
+              lastKnownTimeRemainingText: getRemainingTimeText(),
+              videoDuration: getDuration(),
+              buffering: bufferingState
+            }, function(data) {
+              console.log("got update from server", data);
+              if (data.error) {
+                session.lastKnownTime = oldLastKnownTime;
+                session.lastKnownTimeUpdatedAt = oldLastKnownTimeUpdatedAt;
+                session.state = oldState;
+                reject();
+              } else {
+                if (data.message) addMessage(data.message);
+                resolve();
+              }
+            });
+          });
+        }
+      }).then(function() {
+        // wait when others are buffering
+        // if(othersAreBuffering) {
+        //  return freezeUntil(function() {
+        //     return !othersAreBuffering;
+        //  }, 3000)()
+        // }
+      });
+    };
+  };
+
+  var pushTask = function(task, name) {
+    // console.log('pushTask called w tasksInFlight: ' + tasksInFlight);
+    if (Object.keys(tasksInFlight).length === 0) {
+      // why reset tasks here? in case the native promises implementation isn't
+      // smart enough to garbage collect old completed tasks in the chain.
+      tasks = Promise.resolve();
+    }
+    var taskId = hash64();
+    while (tasksInFlight.hasOwnProperty(taskId)) taskId = hash64();
+    tasksInFlight[taskId] = {
+      id: taskId,
+      name: name
+    };
+
+    tasks = tasks.then(function() {
+      if (getState() === 'idle') {
+        swallow(wakeUp, "wakeUp")();
+      }
+    }).then(swallow(task, name)).then((result) => {
+      delete tasksInFlight[taskId];
+    });
+  };
+
+  // this is called when data is received from the server
+  function updateSession(data) {
+    console.log("received session update: ", data);
+    // console.log("received data: " + getDuration());
+
+    // TODO: sync from end ?
+    if(syncFromEnd) {
+      // try to sync to local video duration - lastKnownTimeRemaining from server update
+  
+      // negative lastKnownTime -> do nothing
+      // TODO: if negative last known time fix to send update to force everyone to get onto video     
+      if (getDuration() < data.lastKnownTimeRemaining) {
+        // update
+        pushTask(broadcastState(false), "broadcastState");
+        return () => Promise.resolve();
+      } else {
+        console.error("lastKnownTime set from end: Unsupported!");
+        session.lastKnownTime = getDuration() - data.lastKnownTimeRemaining;
+      }
+    } else {
+      // try to sync to lastKnownTime from server update
+      console.log("updated session with time " + data.lastKnownTime);
+      session.lastKnownTime = data.lastKnownTime;
+    }
+
+    session.state = data.state;
+    session.lastKnownTimeUpdatedAt = new Date(data.lastKnownTimeUpdatedAt);
+    return sync;
+  };
+
+  // returns true if a user action is on a next episode button
+  function isNextEpisodeClick(target) {
+    if(jQuery(target).hasClass('button-nfplayerNextEpisode')) {
+      console.log('BUTTON NEXT EPISODE CLICK?:')
+      return true;
+    }
+    // otherwise click on the autoplay next episode hover container (short episodes like Friends)
+    else if (jQuery(target).hasClass('WatchNext-still-hover-container')) {
+      console.log('HOVER NEXT EPISODE CLICK');
+      return true;
+    }
+
+    else if (jQuery(target).hasClass('PlayIcon')) {
+      console.log('HOVER NEXT EPISODE CLICK');
+      return true;
+    }
+     // click on the next episode button (in the middle of episodes)
+    else if (jQuery(target).hasClass('button-nfplayerNextEpisode').length > 0) {
+      // jQuery('.button-nfplayerNextEpisode').click()
+      return true;
+    }
+    // otherwise click on the credits next episode button (before AND after credits on long episodes like Umbrella Academy)
+    else if (jQuery(target).hasClass('nf-flat-button-text')) {
+      console.log('CREDITS NEXT EPISODE CLICK?:' + jQuery(target).text());
+
+      if(jQuery(target).text().toLowerCase().includes('next episode')) {
+        return true;
+        // jQuery('.nf-flat-button-text')[0].click();
+        // console.log('after credits click');
+      }
+    } else {
+      return false;
+    }
+  }
+
+  function mouseupListener() {
+    console.log("mouseup");
+    // console.log(jQuery(event.target).attr('class'));
+    // console.log(jQuery(event.target).text());
+    // console.log(jQuery(event.target).hasClass('button-nfplayerNextEpisode'));
+
+    if(!isNextEpisodeClick(event.target)) {
+      var sessionIdString = session ? session.id : 'null';
+      if (session && uiEventsHappening === 0) {
+        pushTask(function() {
+          return broadcastState(true)().catch(sync);
+        }, "broadcastState from mouseUp");
+      }
+    } else {
+      // TODO: next episode
+      console.debug("Next episode button clicked, panic!");
+      //setSessionEnabled(false);
+      // oldSessionId = sessionId;
+      // sessionId = null;
+
+      // lastKnownTime = null;
+      // lastKnownTimeUpdatedAt = null;
+      // var ownerId = null;
+      // state = null;
+    }
+  }
+
+  function keyupListener(e) {
+    // e.stopPropagation();
+    // console.log(event.target.className);
+    // if(jQuery(event.target).hasClass('nfp')) {
+    if (session && uiEventsHappening === 0) {
+      pushTask(function() {
+        return broadcastState(true)().catch(sync);
+      }, "broadcastState from keyUp");
+    }
+    // }
+  }
+
+  // broadcast the playback state if there is any user activity
+  jQuery(window).mouseup(mouseupListener);
+  jQuery(window).keyup(keyupListener);
 
   /*************************
    * Chrome Event Handling *
@@ -562,6 +1257,9 @@ function netflixParty() {
           console.debug("Joined session #" + response.session.id);
           users = response.users;
           initSession(response.session);
+          console.group("Joined Session");
+          console.dir(session);
+          console.groupEnd();
           sendResponse({
             sessionId: response.session.id
           });
@@ -599,6 +1297,7 @@ function netflixParty() {
 
   function initSocket() {
     var socketURL = "https://netflixparty.raphydaphy.com?";
+    var socketURL = "http://localhost:3000?"
     if (incognito) socketURL += "incognito=true";
     else socketURL += `userid=${userId}&token=${userToken}`
     socket = io(socketURL);
@@ -615,6 +1314,13 @@ function netflixParty() {
 
       setOwnIcon(data.user.icon);
       setOwnName(data.user.name);
+
+      syncInterval = setInterval(function() {
+        if (Object.keys(tasksInFlight).length === 0) {
+          pushTask(ping, "syncInterval ping");
+          pushTask(sync, "syncInterval sync");
+        }
+      }, 5000);
     });
 
     /******************
@@ -711,6 +1417,39 @@ function netflixParty() {
       if (userStatus.error) return console.warn("Failed to change icon:", userStatus.error);
       users[data.userId].icon = data.icon;
       addMessage(data.message);
+    });
+
+    /***********************
+     * Netflix Sync Events *
+     ***********************/
+
+    // receive buffering presence updates from the server
+    socket.on("buffering", function(data) {
+      var userStatus = getUserStatus(data.userId);
+      if (userStatus.error) return console.error("Failed to set buffering status:", userStatus.error);
+      users[data.userId].buffering = data.buffering;
+      var bufferingUsers = [];
+      session.users.forEach(sessionUserId => {
+        var sessionUser = users[sessionUserId];
+        if (sessionUser.active && sessionUser.buffering) {
+          bufferingUsers.push(sessionUser);
+        }
+      });
+
+      othersAreBuffering = bufferingUsers.length > 0;
+
+      if (othersAreBuffering) {
+        console.log(bufferingUsers.length + " users are buffering...");
+      }
+
+      var time = new Date();
+      var timeStatus = " at " + time.getHours() + ":" + time.getMinutes() + ":" + time.getMilliseconds() + "AM";
+      // console.log("received buffering update: " + data.anyoneBuffering + timeStatus);
+      // if(othersAreBuffering) console.log("others are buffering: " + othersAreBuffering + timeStatus);
+    });
+
+    socket.on("updateSession", function(data) {
+      pushTask(updateSession(data), "updateSession from socket");
     });
   }
 

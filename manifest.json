@@ -12,7 +12,8 @@
       "identity",
       "identity.email",
       "https://*.netflix.com/*",
-      "https://netflixparty.raphydaphy.com/*"
+      "https://netflixparty.raphydaphy.com/*",
+      "http://localhost:3000/*"
   ],
   "page_action": {
     "default_icon": {

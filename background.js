@@ -1,6 +1,7 @@
 'use strict';
 
-const serverURL = "https://netflixparty.raphydaphy.com";
+//const serverURL = "https://netflixparty.raphydaphy.com";
+const serverURL = "http://localhost:3000";
 
 // log events
 function logEvent(eventType) {
