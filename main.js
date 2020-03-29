@@ -23,6 +23,7 @@ function netflixParty() {
   var users = {};
 
   var socket;
+  var version;
 
   // An empty heart will appear on the first message the user recieves
   var likeTutorial = false;
@@ -38,9 +39,9 @@ function netflixParty() {
   var originalTitle = document.title;
   var unreadMsgCount = 0;
 
-  /********************
-   * Helper Functions *
-   ********************/
+  /****************************
+   * Generic Helper Functions *
+   ****************************/
    
   function delay(milliseconds) {
     return function(result) {
@@ -66,6 +67,58 @@ function netflixParty() {
       return checkForCondition();
     };
   };
+
+  // add value to the end of array, and remove items from the beginning
+  // such that the length does not exceed limit
+  function shove(array, value, limit) {
+    array.push(value);
+    if (array.length > limit) {
+      array.splice(0, array.length - limit);
+    }
+  };
+
+  // compute the mean of an array of numbers
+  function mean(array) {
+    return array.reduce(function(a, b) { return a + b; }) / array.length;
+  };
+
+  // compute the median of an array of numbers
+  function median(array) {
+    return array.concat().sort()[Math.floor(array.length / 2)];
+  };
+
+  // swallow any errors from an action
+  // and log them to the console
+  // returns a function that takes in a previous promise result arg that is passed down to swallowed action
+  function swallow(action) {
+    return function(result) {
+      return action(result).catch(function(e) {
+        console.error(e);
+      });
+    };
+  };
+
+  // promise.ensure(fn) method
+  // note that this method will not swallow errors
+  Promise.prototype.ensure = function(fn) {
+    return this.then(fn, function(e) {
+      fn();
+      throw e;
+    });
+  };
+
+  // inject a script onto the Netflix window DOM outside of CRX sandbox
+  // with full access to window context
+  var injectScript = function(script) {
+    var s = document.createElement('script');
+    s.textContent = script;
+    (document.head||document.documentElement).appendChild(s);
+    s.remove();
+  }
+
+  /*************************
+   * Chat Helper Functions *
+   *************************/
 
   function getUserStatus(id) {
     if (!session) {
@@ -325,6 +378,11 @@ function netflixParty() {
     session.messages[msg.id] = msg;
 
     addLikes(msg.id, msg.likes, false);
+
+    if (msg.userId != userId && !document.hasFocus()) {
+      unreadMsgCount += 1;
+      document.title = '(' + String(unreadMsgCount) + ') ' + originalTitle;
+    }
   }
 
   function initSession(newSession) {
@@ -446,6 +504,12 @@ function netflixParty() {
         }, 500);
       }
     });
+
+    jQuery(window).focus(function() {
+      if (isChatVisible()) {
+        clearUnreadCount();
+      }
+    });
   }
 
   function injectHtml() {
@@ -467,10 +531,9 @@ function netflixParty() {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.type) {
       case "getInitData":
-        // TODO
+        version = request.data.version;
         sendResponse({
           sessionId: session ? session.id : undefined,
-          videoDomId: undefined,
           chatVisible: isChatVisible()
         });
         return true;
@@ -596,7 +659,7 @@ function netflixParty() {
 
       addMessage(data.message);
 
-      if (!likeTutorial && data.message.userId != userId && !data.message.isSystemMsg) {
+      if (!likeTutorial && data.message.userId != userId && !data.message.isSystemMsg && Math.random() > 0.7) {
         setTimeout(() => {
           if (!likeTutorial) addHeartIcon(data.message.id, true, true);
         }, 1000);
