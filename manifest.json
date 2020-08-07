@@ -2,8 +2,8 @@
   "manifest_version": 2,
 
   "name": "Netflix Party+",
-  "description": "Watch Netflix with your friends while in self-isolation - now with more funcionality!",
-  "version": "1.0",
+  "description": "Watch Netflix with your friends while in quarantine - now with more funcionality!",
+  "version": "1.0.1",
   "permissions": [
       "activeTab",
       "declarativeContent",
