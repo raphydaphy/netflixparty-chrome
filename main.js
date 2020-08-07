@@ -720,9 +720,22 @@ function netflixParty() {
     }
   }
 
+  function getSessionURL() {
+  	var curVideoUrl = window.location.href.split("?")[0];
+    if(curVideoUrl && session && session.id) {
+      var urlWithSessionId = curVideoUrl + "?npSessionId=" + encodeURIComponent(session.id);
+      return urlWithSessionId;
+    } else {
+      return curVideoUrl;
+    }
+  }
+
   function initSession(newSession) {
     session = newSession;
     session.videoDuration = getDuration();
+    var sessionUrl = getSessionURL();
+    history.replaceState(null, null, sessionUrl);
+    console.info("Link", sessionUrl);
     setChatVisible(true);
     jQuery("#presence-indicator").html("<br />");
     for (var messageId in session.messages) {
@@ -804,17 +817,17 @@ function netflixParty() {
     });
 
     jQuery("#link-icon").click(e => {
-      var currVideoUrl = window.location.href.split("?")[0];
-      if(currVideoUrl && session && session.id) {
-        var urlWithSessionId = currVideoUrl + "?npSessionId=" + encodeURIComponent(session.id);
-        console.debug("Copied share url", urlWithSessionId);
+	  var sessionUrl = getSessionURL();
+      if(sessionUrl) {
 
         const el = document.createElement("textarea");
-        el.value = urlWithSessionId;
+        el.value = sessionUrl;
         document.body.appendChild(el);
         el.select();
         document.execCommand("copy");
         document.body.removeChild(el);
+
+        console.debug("Copied share url", sessionUrl);
       }
     });
 
